@@ -26,10 +26,7 @@
 </head>
 <body>
     <div class="container">
-        <a href="https://discord.gg/hoboinc" target="_blank">
-            <img src="https://img3.gelbooru.com//samples/7a/a0/sample_7aa0fccb75136c0acb2b2016756ca0d3.jpg" alt="Clickable Image">
-        </a>
-        <div class="text">This is some text at the bottom of the image.</div>
+        <div class="text">Welcome to the Hobos</div>
     </div>
 </body>
 </html>
