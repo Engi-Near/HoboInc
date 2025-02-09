@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Text Box Ring</title>
+    <style>
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #f0f0f0;
+        }
+        .ring {
+            position: relative;
+            width: 50vmin;
+            height: 50vmin;
+        }
+        .box {
+            position: absolute;
+            width: 10vmin;
+            height: 10vmin;
+            background-color: white;
+            border: 2px solid black;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            border-radius: 10px;
+        }
+        .box:nth-child(1) { top: 0; left: 50%; transform: translateX(-50%); }
+        .box:nth-child(2) { top: 50%; left: 100%; transform: translate(-50%, -50%); }
+        .box:nth-child(3) { bottom: 0; left: 50%; transform: translateX(-50%); }
+        .box:nth-child(4) { top: 50%; left: 0; transform: translate(-50%, -50%); }
+        .box:nth-child(5) { top: 50%; left: 50%; transform: translate(-50%, -50%); background-color: lightgray; }
+    </style>
+</head>
+<body>
+    <div class="ring">
+        <div class="box">1</div>
+        <div class="box">2</div>
+        <div class="box">3</div>
+        <div class="box">4</div>
+        <div class="box">5</div>
+    </div>
+</body>
+</html>
