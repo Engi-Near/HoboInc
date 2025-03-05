@@ -8,6 +8,7 @@ const OBSTACLE_SPEED = 5;
 const OBSTACLE_WIDTH = 20;
 const OBSTACLE_HEIGHT = 40;
 const PLAYER_SIZE = 30;
+const SCORE_INTERVAL = 500; // 0.5 seconds in milliseconds
 
 // Image loading
 const playerImage = new Image();
@@ -27,6 +28,8 @@ let player = {
 let obstacles = [];
 let score = 0;
 let gameOver = false;
+let lastScoreTime = 0;
+let lastObstacleTime = 0;
 
 // Event listeners
 document.addEventListener('keydown', (event) => {
@@ -48,6 +51,8 @@ function resetGame() {
     obstacles = [];
     score = 0;
     gameOver = false;
+    lastScoreTime = 0;
+    lastObstacleTime = 0;
 }
 
 function createObstacle() {
@@ -73,9 +78,17 @@ function update() {
         player.isJumping = false;
     }
 
-    // Create obstacles
-    if (obstacles.length === 0 || obstacles[obstacles.length - 1].x < canvas.width - 300) {
+    // Update time-based score
+    const currentTime = Date.now();
+    if (currentTime - lastScoreTime >= SCORE_INTERVAL) {
+        score++;
+        lastScoreTime = currentTime;
+    }
+
+    // Create obstacles at random intervals
+    if (currentTime - lastObstacleTime >= Math.random() * 900 + 100) { // Random between 100-1000ms
         createObstacle();
+        lastObstacleTime = currentTime;
     }
 
     // Update obstacles
@@ -83,7 +96,6 @@ function update() {
         obstacles[i].x -= OBSTACLE_SPEED;
         if (obstacles[i].x + obstacles[i].width < 0) {
             obstacles.splice(i, 1);
-            score++;
         }
     }
 
@@ -104,33 +116,31 @@ function draw() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
     // Draw player
-    if (playerImage.complete) { // Check if image is loaded
+    if (playerImage.complete) {
         ctx.drawImage(playerImage, player.x, player.y, PLAYER_SIZE, PLAYER_SIZE);
     } else {
-        // Fallback to rectangle if image isn't loaded
         ctx.fillStyle = 'black';
         ctx.fillRect(player.x, player.y, PLAYER_SIZE, PLAYER_SIZE);
     }
 
     // Draw obstacles
     for (let obstacle of obstacles) {
-        if (obstacleImage.complete) { // Check if image is loaded
+        if (obstacleImage.complete) {
             ctx.drawImage(obstacleImage, obstacle.x, obstacle.y, obstacle.width, obstacle.height);
         } else {
-            // Fallback to rectangle if image isn't loaded
             ctx.fillStyle = 'red';
             ctx.fillRect(obstacle.x, obstacle.y, obstacle.width, obstacle.height);
         }
     }
 
     // Draw score
-    ctx.fillStyle = 'black';
+    ctx.fillStyle = 'blue';
     ctx.font = '20px Arial';
     ctx.fillText(`Score: ${score}`, 20, 30);
 
     // Draw game over message
     if (gameOver) {
-        ctx.fillStyle = 'black';
+        ctx.fillStyle = 'red';
         ctx.font = '40px Arial';
         ctx.fillText('Game Over!', canvas.width/2 - 100, canvas.height/2);
         ctx.font = '20px Arial';
