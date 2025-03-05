@@ -9,6 +9,13 @@ const OBSTACLE_WIDTH = 20;
 const OBSTACLE_HEIGHT = 40;
 const PLAYER_SIZE = 30;
 
+// Image loading
+const playerImage = new Image();
+playerImage.src = 'player.png'; // You'll need to add this image file
+
+const obstacleImage = new Image();
+obstacleImage.src = 'obstacle.png'; // You'll need to add this image file
+
 // Game state
 let player = {
     x: 50,
@@ -97,13 +104,23 @@ function draw() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
     // Draw player
-    ctx.fillStyle = 'black';
-    ctx.fillRect(player.x, player.y, PLAYER_SIZE, PLAYER_SIZE);
+    if (playerImage.complete) { // Check if image is loaded
+        ctx.drawImage(playerImage, player.x, player.y, PLAYER_SIZE, PLAYER_SIZE);
+    } else {
+        // Fallback to rectangle if image isn't loaded
+        ctx.fillStyle = 'black';
+        ctx.fillRect(player.x, player.y, PLAYER_SIZE, PLAYER_SIZE);
+    }
 
     // Draw obstacles
-    ctx.fillStyle = 'red';
     for (let obstacle of obstacles) {
-        ctx.fillRect(obstacle.x, obstacle.y, obstacle.width, obstacle.height);
+        if (obstacleImage.complete) { // Check if image is loaded
+            ctx.drawImage(obstacleImage, obstacle.x, obstacle.y, obstacle.width, obstacle.height);
+        } else {
+            // Fallback to rectangle if image isn't loaded
+            ctx.fillStyle = 'red';
+            ctx.fillRect(obstacle.x, obstacle.y, obstacle.width, obstacle.height);
+        }
     }
 
     // Draw score
