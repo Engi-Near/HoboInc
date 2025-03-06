@@ -176,7 +176,7 @@ function update() {
     }
 
     // Create obstacles at random intervals (scaled with speed)
-    const baseInterval = 2250; // Base random interval (750-3000ms)
+    const baseInterval = 3750; // Base random interval (750-4500ms)
     const scaledInterval = baseInterval / currentSpeedMultiplier;
     if (currentTime - lastObstacleTime >= Math.random() * scaledInterval + (750 / currentSpeedMultiplier)) {
         createObstacle();
