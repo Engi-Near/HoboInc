@@ -145,20 +145,33 @@ class Game {
             const enemyTypes = ['basic', 'tank', 'ranged'];
             const type = enemyTypes[Math.floor(Math.random() * enemyTypes.length)];
             
-            // Calculate map boundaries with margin
-            const margin = 64; // Keep enemies away from the very edge
-            const minX = margin;
-            const maxX = (this.map.width * this.map.tileSize) - margin;
-            const minY = margin;
-            const maxY = (this.map.height * this.map.tileSize) - margin;
-
-            // Generate random position within map boundaries
-            const x = minX + Math.random() * (maxX - minX);
-            const y = minY + Math.random() * (maxY - minY);
+            // Calculate actual map boundaries in pixels
+            const mapWidth = this.map.width * this.map.tileSize;
+            const mapHeight = this.map.height * this.map.tileSize;
             
-            // Create and add the enemy
-            this.enemies.push(new Enemy(x, y, type));
-            this.lastEnemySpawn = now;
+            // Add margin to keep enemies away from edges
+            const margin = 64;
+            
+            // Ensure spawn area is valid
+            const spawnWidth = mapWidth - (margin * 2);
+            const spawnHeight = mapHeight - (margin * 2);
+            
+            if (spawnWidth <= 0 || spawnHeight <= 0) {
+                console.warn('Map too small for enemy spawn');
+                return;
+            }
+
+            // Generate random position within valid spawn area
+            const x = margin + Math.floor(Math.random() * spawnWidth);
+            const y = margin + Math.floor(Math.random() * spawnHeight);
+            
+            // Validate position is within map
+            if (x >= 0 && x < mapWidth && y >= 0 && y < mapHeight) {
+                this.enemies.push(new Enemy(x, y, type));
+                this.lastEnemySpawn = now;
+            } else {
+                console.warn('Invalid enemy spawn position calculated:', x, y);
+            }
         }
     }
 
