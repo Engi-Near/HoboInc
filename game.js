@@ -3,7 +3,7 @@ const ctx = canvas.getContext('2d');
 
 // Game constants
 const GRAVITY = 0.5;
-const JUMP_FORCE = -12;
+const JUMP_FORCE = -8;
 const BASE_OBSTACLE_SPEED = 5;
 const OBSTACLE_WIDTH = 20;
 const OBSTACLE_HEIGHT = 40;
