@@ -18,6 +18,8 @@ class Game {
         this.keys = {};
         this.mouseX = 0;
         this.mouseY = 0;
+        this.cameraX = 0;
+        this.cameraY = 0;
         this.setupInputHandlers();
         
         // Start game loop
@@ -63,8 +65,8 @@ class Game {
 
         window.addEventListener('mousemove', (e) => {
             const rect = this.canvas.getBoundingClientRect();
-            this.mouseX = e.clientX - rect.left;
-            this.mouseY = e.clientY - rect.top;
+            this.mouseX = e.clientX - rect.left + this.cameraX;
+            this.mouseY = e.clientY - rect.top + this.cameraY;
             
             // Calculate angle between player and mouse
             const dx = this.mouseX - (this.player.x + this.player.width / 2);
@@ -120,6 +122,10 @@ class Game {
     }
 
     update() {
+        // Update camera position
+        this.cameraX = this.player.x - this.canvas.width / 2;
+        this.cameraY = this.player.y - this.canvas.height / 2;
+
         // Update player movement and collision
         this.player.update(this.map);
 
