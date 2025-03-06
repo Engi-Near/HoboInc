@@ -7,37 +7,71 @@ class Player extends GameObject {
             fireRate: 250, // milliseconds
             lastShot: 0
         };
+        this.angle = 0;
+        this.movementKeys = {
+            up: false,
+            down: false,
+            left: false,
+            right: false
+        };
     }
 
-    move(direction) {
-        switch(direction) {
-            case 'up':
-                this.velocityY = -this.speed;
-                break;
-            case 'down':
-                this.velocityY = this.speed;
-                break;
-            case 'left':
-                this.velocityX = -this.speed;
-                break;
-            case 'right':
-                this.velocityX = this.speed;
-                break;
-        }
+    move(direction, isMoving) {
+        this.movementKeys[direction] = isMoving;
+        this.updateVelocity();
     }
 
-    stopMoving(direction) {
-        switch(direction) {
-            case 'up':
-            case 'down':
-                this.velocityY = 0;
-                break;
-            case 'left':
-            case 'right':
-                this.velocityX = 0;
-                break;
+    updateVelocity() {
+        let dx = 0;
+        let dy = 0;
+
+        if (this.movementKeys.up) dy -= 1;
+        if (this.movementKeys.down) dy += 1;
+        if (this.movementKeys.left) dx -= 1;
+        if (this.movementKeys.right) dx += 1;
+
+        // Normalize diagonal movement
+        if (dx !== 0 && dy !== 0) {
+            const length = Math.sqrt(dx * dx + dy * dy);
+            dx = dx / length * this.speed;
+            dy = dy / length * this.speed;
+        } else {
+            dx *= this.speed;
+            dy *= this.speed;
+        }
+
+        this.velocityX = dx;
+        this.velocityY = dy;
+    }
+
+    update(map) {
+        // Store previous position
+        const prevX = this.x;
+        const prevY = this.y;
+
+        // Update position
+        this.x += this.velocityX;
+        this.y += this.velocityY;
+
+        // Check for wall collisions
+        const bounds = this.getBounds();
+        const tileX1 = Math.floor(bounds.left / map.tileSize);
+        const tileX2 = Math.floor(bounds.right / map.tileSize);
+        const tileY1 = Math.floor(bounds.top / map.tileSize);
+        const tileY2 = Math.floor(bounds.bottom / map.tileSize);
+
+        // Check horizontal collision
+        if (map.isWall(tileX1, tileY1) || map.isWall(tileX1, tileY2) ||
+            map.isWall(tileX2, tileY1) || map.isWall(tileX2, tileY2)) {
+            this.x = prevX;
+        }
+        // Check vertical collision
+        if (map.isWall(tileX1, tileY1) || map.isWall(tileX2, tileY1) ||
+            map.isWall(tileX1, tileY2) || map.isWall(tileX2, tileY2)) {
+            this.y = prevY;
         }
     }
+    
 
     shoot() {
         const now = Date.now();
