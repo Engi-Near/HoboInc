@@ -3,9 +3,7 @@ const ctx = canvas.getContext('2d');
 
 // Game constants
 const GRAVITY = 0.5;
-const NORMAL_JUMP_FORCE = -8;
-const STRONG_JUMP_FORCE = -16;
-const JUMP_THRESHOLD = 50; // milliseconds
+const JUMP_FORCE = -12;
 const BASE_OBSTACLE_SPEED = 5;
 const OBSTACLE_WIDTH = 20;
 const OBSTACLE_HEIGHT = 40;
@@ -31,8 +29,7 @@ let player = {
     x: 50,
     y: canvas.height - PLAYER_SIZE,
     velocityY: 0,
-    isJumping: false,
-    jumpStartTime: 0
+    isJumping: false
 };
 
 let obstacles = [];
@@ -57,7 +54,8 @@ document.addEventListener('keydown', (event) => {
         if (gameOver) {
             resetGame();
         } else if (!player.isJumping) {
-            player.jumpStartTime = Date.now();
+            player.velocityY = JUMP_FORCE;
+            player.isJumping = true;
         }
     }
 });
@@ -77,7 +75,6 @@ function resetGame() {
     player.y = canvas.height - PLAYER_SIZE;
     player.velocityY = 0;
     player.isJumping = false;
-    player.jumpStartTime = 0;
     obstacles = [];
     bullets = [];
     shooter = {
@@ -141,16 +138,6 @@ function updateShooter() {
 
 function update() {
     if (gameOver) return;
-
-    // Check for auto-jump
-    if (!player.isJumping && player.jumpStartTime > 0) {
-        const holdTime = Date.now() - player.jumpStartTime;
-        if (holdTime >= JUMP_THRESHOLD) {
-            player.velocityY = STRONG_JUMP_FORCE;
-            player.isJumping = true;
-            player.jumpStartTime = 0;
-        }
-    }
 
     // Update speed multiplier
     updateSpeedMultiplier();
