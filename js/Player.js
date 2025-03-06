@@ -14,6 +14,7 @@ class Player extends GameObject {
             left: false,
             right: false
         };
+        this.aimLineLength = 50; // Length of the aiming line
     }
 
     move(direction, isMoving) {
@@ -65,24 +66,33 @@ class Player extends GameObject {
             map.isWall(tileX2, tileY1) || map.isWall(tileX2, tileY2)) {
             this.x = prevX;
         }
+
         // Check vertical collision
         if (map.isWall(tileX1, tileY1) || map.isWall(tileX2, tileY1) ||
             map.isWall(tileX1, tileY2) || map.isWall(tileX2, tileY2)) {
             this.y = prevY;
         }
     }
-    
 
-    shoot() {
+    shoot(targetX, targetY) {
         const now = Date.now();
         if (now - this.weapon.lastShot >= this.weapon.fireRate) {
             this.weapon.lastShot = now;
+            
+            // Calculate angle to target
+            const dx = targetX - (this.x + this.width / 2);
+            const dy = targetY - (this.y + this.height / 2);
+            const angle = Math.atan2(dy, dx);
+            
             return new Projectile(
                 this.x + this.width / 2,
                 this.y + this.height / 2,
                 8,
                 8,
-                10
+                10,
+                20,
+                3, // penetration
+                100 // knockback
             );
         }
         return null;
