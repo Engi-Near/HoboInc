@@ -25,10 +25,38 @@ class Game {
     setupInputHandlers() {
         window.addEventListener('keydown', (e) => {
             this.keys[e.key] = true;
+            switch(e.key.toLowerCase()) {
+                case 'w':
+                    this.player.move('up', true);
+                    break;
+                case 's':
+                    this.player.move('down', true);
+                    break;
+                case 'a':
+                    this.player.move('left', true);
+                    break;
+                case 'd':
+                    this.player.move('right', true);
+                    break;
+            }
         });
 
         window.addEventListener('keyup', (e) => {
             this.keys[e.key] = false;
+            switch(e.key.toLowerCase()) {
+                case 'w':
+                    this.player.move('up', false);
+                    break;
+                case 's':
+                    this.player.move('down', false);
+                    break;
+                case 'a':
+                    this.player.move('left', false);
+                    break;
+                case 'd':
+                    this.player.move('right', false);
+                    break;
+            }
         });
 
         window.addEventListener('mousemove', (e) => {
@@ -90,11 +118,8 @@ class Game {
     }
 
     update() {
-        // Update player movement
-        if (this.keys['w']) this.player.move('up');
-        if (this.keys['s']) this.player.move('down');
-        if (this.keys['a']) this.player.move('left');
-        if (this.keys['d']) this.player.move('right');
+        // Update player movement and collision
+        this.player.update(this.map);
 
         // Update enemies
         this.enemies.forEach(enemy => {
