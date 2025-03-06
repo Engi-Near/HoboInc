@@ -185,8 +185,21 @@ class Game {
 
         if (!this.player || !this.map) return;
 
-        // Update player
-        this.player.update(this.map);
+        // Update player only if in PLAYING state
+        if (this.gameState.currentState === GameState.PLAYING) {
+            this.player.update(this.map);
+        } else if (this.gameState.currentState === GameState.UPGRADE) {
+            // Stop player movement in upgrade state
+            this.player.velocityX = 0;
+            this.player.velocityY = 0;
+            // Reset movement keys to prevent movement when returning to PLAYING
+            this.player.movementKeys = {
+                up: false,
+                down: false,
+                left: false,
+                right: false
+            };
+        }
 
         // Update coins
         this.coins = this.coins.filter(coin => {
@@ -209,13 +222,7 @@ class Game {
             this.enemies.forEach(enemy => {
                 enemy.update(this.player, this.enemies, this.map);
                 
-                // Enemy shooting logic
-                const projectile = enemy.shootProjectile(this.player.x, this.player.y);
-                if (projectile) {
-                    projectile.isFromPlayer = false;
-                    projectile.isFriendly = false;
-                    this.projectiles.push(projectile);
-                }
+                // Enemy shooting logic removed
             });
 
             // Update projectiles
