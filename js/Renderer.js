@@ -59,14 +59,28 @@ class Renderer {
     }
 
     renderPlayer(player) {
+        // Draw player
         this.ctx.fillStyle = '#00f';
         this.ctx.fillRect(player.x, player.y, player.width, player.height);
         
-        // Render health bar
+        // Draw health bar
         this.ctx.fillStyle = '#f00';
         this.ctx.fillRect(player.x, player.y - 10, player.width, 5);
         this.ctx.fillStyle = '#0f0';
         this.ctx.fillRect(player.x, player.y - 10, player.width * (player.health / 100), 5);
+
+        // Draw aiming line
+        this.ctx.beginPath();
+        this.ctx.strokeStyle = '#00f';
+        this.ctx.lineWidth = 2;
+        const centerX = player.x + player.width / 2;
+        const centerY = player.y + player.height / 2;
+        this.ctx.moveTo(centerX, centerY);
+        this.ctx.lineTo(
+            centerX + Math.cos(player.angle) * player.aimLineLength,
+            centerY + Math.sin(player.angle) * player.aimLineLength
+        );
+        this.ctx.stroke();
     }
 
     renderEnemies(enemies, cameraX, cameraY) {
