@@ -7,6 +7,7 @@ class Enemy extends GameObject {
         this.attackRange = this.getRangeByType();
         this.lastAttack = 0;
         this.attackCooldown = this.getCooldownByType();
+        this.mass = this.getMassByType();
     }
 
     getHealthByType() {
@@ -61,9 +62,23 @@ class Enemy extends GameObject {
         }
     }
 
-    update(player) {
+    getMassByType() {
+        switch(this.type) {
+            case 'basic':
+                return 1;
+            case 'tank':
+                return 2;
+            case 'ranged':
+                return 0.5;
+            default:
+                return 1;
+        }
+    }
+
+    update(player, enemies) {
         super.update();
         this.moveTowardsPlayer(player);
+        this.handleEnemyCollisions(enemies);
     }
 
     moveTowardsPlayer(player) {
@@ -75,6 +90,30 @@ class Enemy extends GameObject {
             this.velocityX = (dx / distance) * this.speed;
             this.velocityY = (dy / distance) * this.speed;
         }
+    }
+
+    handleEnemyCollisions(enemies) {
+        enemies.forEach(enemy => {
+            if (enemy !== this && this.isColliding(enemy)) {
+                // Calculate collision response
+                const dx = enemy.x - this.x;
+                const dy = enemy.y - this.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+                
+                if (distance > 0) {
+                    // Push enemies apart based on their masses
+                    const pushDistance = (this.mass + enemy.mass) / 2;
+                    const pushX = (dx / distance) * pushDistance;
+                    const pushY = (dy / distance) * pushDistance;
+                    
+                    // Move both enemies apart
+                    this.x -= pushX * (enemy.mass / (this.mass + enemy.mass));
+                    this.y -= pushY * (enemy.mass / (this.mass + enemy.mass));
+                    enemy.x += pushX * (this.mass / (this.mass + enemy.mass));
+                    enemy.y += pushY * (this.mass / (this.mass + enemy.mass));
+                }
+            }
+        });
     }
 
     canAttack(player) {
