@@ -65,8 +65,13 @@ class Game {
 
         window.addEventListener('mousemove', (e) => {
             const rect = this.canvas.getBoundingClientRect();
-            this.mouseX = e.clientX - rect.left + this.cameraX;
-            this.mouseY = e.clientY - rect.top + this.cameraY;
+            // Convert screen coordinates to world coordinates
+            const screenX = e.clientX - rect.left;
+            const screenY = e.clientY - rect.top;
+            
+            // Calculate world coordinates by adding camera offset
+            this.mouseX = screenX + (this.player.x - this.canvas.width / 2);
+            this.mouseY = screenY + (this.player.y - this.canvas.height / 2);
             
             // Calculate angle between player and mouse
             const dx = this.mouseX - (this.player.x + this.player.width / 2);
