@@ -8,6 +8,12 @@ class Enemy extends GameObject {
         this.lastAttack = 0;
         this.attackCooldown = this.getCooldownByType();
         this.mass = this.getMassByType();
+        this.weapon = {
+            damage: this.getProjectileDamageByType(),
+            fireRate: this.getProjectileFireRateByType(),
+            lastShot: 0,
+            speed: this.getProjectileSpeedByType()
+        };
     }
 
     getHealthByType() {
@@ -75,6 +81,69 @@ class Enemy extends GameObject {
         }
     }
 
+    getProjectileDamageByType() {
+        switch(this.type) {
+            case 'basic':
+                return 10;
+            case 'tank':
+                return 15;
+            case 'ranged':
+                return 20;
+            default:
+                return 10;
+        }
+    }
+
+    getProjectileFireRateByType() {
+        switch(this.type) {
+            case 'basic':
+                return 1000;
+            case 'tank':
+                return 2000;
+            case 'ranged':
+                return 500;
+            default:
+                return 1000;
+        }
+    }
+
+    getProjectileSpeedByType() {
+        switch(this.type) {
+            case 'basic':
+                return 5;
+            case 'tank':
+                return 3;
+            case 'ranged':
+                return 7;
+            default:
+                return 5;
+        }
+    }
+
+    shootProjectile(targetX, targetY) {
+        const now = Date.now();
+        if (now - this.weapon.lastShot >= this.weapon.fireRate) {
+            this.weapon.lastShot = now;
+            
+            // Calculate angle to target
+            const dx = targetX - (this.x + this.width / 2);
+            const dy = targetY - (this.y + this.height / 2);
+            const angle = Math.atan2(dy, dx);
+            
+            return new Projectile(
+                this.x + this.width / 2,
+                this.y + this.height / 2,
+                8,
+                8,
+                this.weapon.speed,
+                this.weapon.damage,
+                1, // penetration
+                0  // no knockback for enemy projectiles
+            );
+        }
+        return null;
+    }
+
     update(player, enemies) {
         super.update();
         this.moveTowardsPlayer(player);
@@ -117,19 +186,11 @@ class Enemy extends GameObject {
     }
 
     canAttack(player) {
-        const dx = player.x - this.x;
-        const dy = player.y - this.y;
-        const distance = Math.sqrt(dx * dx + dy * dy);
-        return distance <= this.attackRange;
+        return this.isColliding(player);
     }
 
     attack(player) {
-        const now = Date.now();
-        if (now - this.lastAttack >= this.attackCooldown) {
-            this.lastAttack = now;
-            return this.attackDamage;
-        }
-        return 0;
+        return this.attackDamage;
     }
 
     takeDamage(amount) {
