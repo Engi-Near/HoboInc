@@ -8,16 +8,15 @@ class Map {
     }
 
     generateMap() {
-        // Generate a simple map with walls around the edges and some random obstacles
+        // Generate a simple map with only border walls
         for (let y = 0; y < this.height; y++) {
             this.tiles[y] = [];
             for (let x = 0; x < this.width; x++) {
-                // Create walls around the edges
+                // Create walls only around the edges
                 if (x === 0 || x === this.width - 1 || y === 0 || y === this.height - 1) {
                     this.tiles[y][x] = 1; // Wall
                 } else {
-                    // Random obstacles (20% chance)
-                    this.tiles[y][x] = Math.random() < 0.2 ? 1 : 0;
+                    this.tiles[y][x] = 0; // Empty space
                 }
             }
         }
