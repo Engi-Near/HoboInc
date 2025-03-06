@@ -7,11 +7,13 @@ class GameObject {
         this.speed = speed;
         this.velocityX = 0;
         this.velocityY = 0;
+        this.sprite = new Sprite(width, height);
     }
 
     update() {
         this.x += this.velocityX;
         this.y += this.velocityY;
+        this.sprite.update();
     }
 
     getBounds() {
@@ -31,5 +33,14 @@ class GameObject {
                bounds.right > otherBounds.left &&
                bounds.top < otherBounds.bottom &&
                bounds.bottom > otherBounds.top;
+    }
+
+    setSprite(imagePath, defaultColor = '#ff0000') {
+        this.sprite = new Sprite(this.width, this.height, defaultColor);
+        this.sprite.setImage(imagePath);
+    }
+
+    render(ctx) {
+        this.sprite.render(ctx, this.x, this.y);
     }
 } 

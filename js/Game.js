@@ -2,238 +2,258 @@ class Game {
     constructor() {
         this.canvas = document.getElementById('gameCanvas');
         this.renderer = new Renderer(this.canvas);
-        
-        // Initialize game objects
-        this.map = new Map(100, 100); // 100x100 tile map
-        this.player = new Player(1600, 1600); // Start player in middle of map
+        this.gameState = new GameState();
+        this.map = new Map(100, 100);
+        this.player = new Player(50, 50);
         this.enemies = [];
         this.projectiles = [];
-        this.enemyProjectiles = []; // Separate array for enemy projectiles
-        
-        // Game state
-        this.isRunning = false;
-        this.score = 0;
-        this.wave = 1;
-        
-        // Input handling
-        this.keys = {};
-        this.mouseX = 0;
-        this.mouseY = 0;
-        this.cameraX = 0;
-        this.cameraY = 0;
-        this.setupInputHandlers();
-        
-        // Start game loop
-        this.start();
+        this.coins = [];
+        this.lastEnemySpawn = 0;
+        this.enemySpawnInterval = 2000; // 2 seconds
+        this.scorePerKill = 100;
+
+        this.setupEventListeners();
+        this.gameLoop();
     }
 
-    setupInputHandlers() {
+    setupEventListeners() {
+        // Mouse movement for aiming
+        this.canvas.addEventListener('mousemove', (e) => {
+            if (this.gameState.currentState === GameState.PLAYING) {
+                const rect = this.canvas.getBoundingClientRect();
+                const mouseX = e.clientX - rect.left;
+                const mouseY = e.clientY - rect.top;
+                this.player.aim(mouseX, mouseY);
+            }
+        });
+
+        // Mouse click for shooting
+        this.canvas.addEventListener('click', (e) => {
+            if (this.gameState.currentState === GameState.PLAYING) {
+                const rect = this.canvas.getBoundingClientRect();
+                const mouseX = e.clientX - rect.left;
+                const mouseY = e.clientY - rect.top;
+                const projectile = this.player.shoot(mouseX, mouseY);
+                if (projectile) {
+                    this.projectiles.push(projectile);
+                }
+            }
+        });
+
+        // Menu and button interactions
+        this.canvas.addEventListener('click', (e) => {
+            const rect = this.canvas.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left;
+            const mouseY = e.clientY - rect.top;
+
+            if (this.gameState.currentState === GameState.MENU) {
+                this.handleMenuClick(mouseX, mouseY);
+            } else if (this.gameState.currentState === GameState.GAME_OVER || 
+                      this.gameState.currentState === GameState.VICTORY) {
+                this.handleGameOverClick(mouseX, mouseY);
+            }
+        });
+
+        // Keyboard controls
         window.addEventListener('keydown', (e) => {
-            this.keys[e.key] = true;
-            switch(e.key.toLowerCase()) {
-                case 'w':
-                    this.player.move('up', true);
-                    break;
-                case 's':
-                    this.player.move('down', true);
-                    break;
-                case 'a':
-                    this.player.move('left', true);
-                    break;
-                case 'd':
-                    this.player.move('right', true);
-                    break;
+            if (this.gameState.currentState === GameState.PLAYING) {
+                switch(e.key.toLowerCase()) {
+                    case 'w': this.player.move('up', true); break;
+                    case 's': this.player.move('down', true); break;
+                    case 'a': this.player.move('left', true); break;
+                    case 'd': this.player.move('right', true); break;
+                }
             }
         });
 
         window.addEventListener('keyup', (e) => {
-            this.keys[e.key] = false;
-            switch(e.key.toLowerCase()) {
-                case 'w':
-                    this.player.move('up', false);
-                    break;
-                case 's':
-                    this.player.move('down', false);
-                    break;
-                case 'a':
-                    this.player.move('left', false);
-                    break;
-                case 'd':
-                    this.player.move('right', false);
-                    break;
+            if (this.gameState.currentState === GameState.PLAYING) {
+                switch(e.key.toLowerCase()) {
+                    case 'w': this.player.move('up', false); break;
+                    case 's': this.player.move('down', false); break;
+                    case 'a': this.player.move('left', false); break;
+                    case 'd': this.player.move('right', false); break;
+                }
             }
         });
 
-        window.addEventListener('mousemove', (e) => {
-            const rect = this.canvas.getBoundingClientRect();
-            // Convert screen coordinates to world coordinates
-            const screenX = e.clientX - rect.left;
-            const screenY = e.clientY - rect.top;
-            
-            // Calculate world coordinates by adding camera offset
-            this.mouseX = screenX + (this.player.x - this.canvas.width / 2);
-            this.mouseY = screenY + (this.player.y - this.canvas.height / 2);
-            
-            // Calculate angle between player and mouse
-            const dx = this.mouseX - (this.player.x + this.player.width / 2);
-            const dy = this.mouseY - (this.player.y + this.player.height / 2);
-            this.player.angle = Math.atan2(dy, dx);
-        });
-
-        window.addEventListener('click', () => {
-            const projectile = this.player.shoot(this.mouseX, this.mouseY);
-            if (projectile) {
-                projectile.setDirection(this.player.angle);
-                this.projectiles.push(projectile);
+        // Add space key listener for upgrades
+        window.addEventListener('keydown', (e) => {
+            if (this.gameState.currentState === GameState.UPGRADE && e.code === 'Space') {
+                this.gameState.upgrade();
             }
         });
     }
 
-    start() {
-        this.isRunning = true;
-        this.spawnEnemies();
-        this.gameLoop();
+    handleMenuClick(x, y) {
+        const centerX = this.canvas.width / 2;
+        const centerY = this.canvas.height / 2;
+        const buttonHeight = 50;
+        const buttonWidth = 200;
+
+        // Check if click is within button bounds
+        if (x >= centerX - buttonWidth/2 && x <= centerX + buttonWidth/2) {
+            if (y >= centerY - buttonHeight/2 && y <= centerY + buttonHeight/2) {
+                this.startGame('normal');
+            } else if (y >= centerY + 60 - buttonHeight/2 && y <= centerY + 60 + buttonHeight/2) {
+                this.startGame('endless');
+            }
+        }
     }
 
-    spawnEnemies() {
-        const numEnemies = 5 + this.wave * 2;
-        for (let i = 0; i < numEnemies; i++) {
-            // Spawn enemies at random positions around the edges of the map
-            const side = Math.floor(Math.random() * 4);
+    handleGameOverClick(x, y) {
+        const centerX = this.canvas.width / 2;
+        const centerY = this.canvas.height / 2;
+        const buttonHeight = 50;
+        const buttonWidth = 200;
+
+        if (x >= centerX - buttonWidth/2 && x <= centerX + buttonWidth/2 &&
+            y >= centerY + 60 - buttonHeight/2 && y <= centerY + 60 + buttonHeight/2) {
+            this.resetGame();
+        }
+    }
+
+    startGame(mode) {
+        this.gameState.startGame(mode);
+        this.resetGameState();
+    }
+
+    resetGame() {
+        this.gameState.reset();
+        this.resetGameState();
+    }
+
+    resetGameState() {
+        this.player = new Player(50, 50);
+        this.enemies = [];
+        this.projectiles = [];
+        this.coins = [];
+        this.lastEnemySpawn = 0;
+        this.map = new Map(100, 100);
+    }
+
+    spawnEnemy() {
+        const now = Date.now();
+        if (now - this.lastEnemySpawn >= this.enemySpawnInterval) {
+            const enemyTypes = ['basic', 'tank', 'ranged'];
+            const type = enemyTypes[Math.floor(Math.random() * enemyTypes.length)];
+            
+            // Spawn enemy at random position on map edges
+            const side = Math.floor(Math.random() * 4); // 0: top, 1: right, 2: bottom, 3: left
             let x, y;
             
             switch(side) {
-                case 0: // Top
+                case 0: // top
                     x = Math.random() * this.map.width * this.map.tileSize;
                     y = -32;
                     break;
-                case 1: // Right
+                case 1: // right
                     x = this.map.width * this.map.tileSize + 32;
                     y = Math.random() * this.map.height * this.map.tileSize;
                     break;
-                case 2: // Bottom
+                case 2: // bottom
                     x = Math.random() * this.map.width * this.map.tileSize;
                     y = this.map.height * this.map.tileSize + 32;
                     break;
-                case 3: // Left
+                case 3: // left
                     x = -32;
                     y = Math.random() * this.map.height * this.map.tileSize;
                     break;
             }
             
-            const enemyTypes = ['basic', 'tank', 'ranged'];
-            const type = enemyTypes[Math.floor(Math.random() * enemyTypes.length)];
             this.enemies.push(new Enemy(x, y, type));
+            this.lastEnemySpawn = now;
         }
+    }
+
+    spawnCoin(x, y) {
+        this.coins.push(new Coin(x, y));
     }
 
     update() {
-        // Update camera position
-        this.cameraX = this.player.x - this.canvas.width / 2;
-        this.cameraY = this.player.y - this.canvas.height / 2;
+        if (this.gameState.currentState !== GameState.PLAYING && 
+            this.gameState.currentState !== GameState.UPGRADE) return;
 
-        // Update player movement and collision
+        // Update player
         this.player.update(this.map);
 
-        // Update enemies with collision handling
-        this.enemies.forEach(enemy => {
-            enemy.update(this.player, this.enemies);
+        // Update coins
+        this.coins = this.coins.filter(coin => {
+            coin.update(this.player);
             
-            // Check for direct collision with player
-            if (enemy.canAttack(this.player)) {
-                const damage = enemy.attack(this.player);
-                if (damage > 0) {
-                    if (this.player.takeDamage(damage)) {
-                        this.gameOver();
-                    }
-                }
-            }
-
-            // Enemy projectile shooting (currently disabled)
-            // if (enemy.type === 'ranged') {
-            //     const projectile = enemy.shootProjectile(this.player.x, this.player.y);
-            //     if (projectile) {
-            //         projectile.setDirection(Math.atan2(
-            //             this.player.y - enemy.y,
-            //             this.player.x - enemy.x
-            //         ));
-            //         this.enemyProjectiles.push(projectile);
-            //     }
-            // }
-        });
-
-        // Update player projectiles
-        this.projectiles = this.projectiles.filter(projectile => {
-            if (!projectile.update()) return false;
-
-            // Check for projectile collisions with enemies
-            for (let i = this.enemies.length - 1; i >= 0; i--) {
-                if (projectile.isColliding(this.enemies[i]) && !projectile.hasHitEnemy(this.enemies[i])) {
-                    if (this.enemies[i].takeDamage(projectile.damage)) {
-                        this.enemies.splice(i, 1);
-                        this.score += 100;
-                    } else {
-                        projectile.applyKnockback(this.enemies[i]);
-                    }
-                    projectile.markEnemyHit(this.enemies[i]);
-                    
-                    // Remove projectile if it can't penetrate anymore
-                    if (!projectile.canPenetrate()) {
-                        return false;
-                    }
-                }
-            }
-
-            // Check for projectile collisions with walls
-            const tileX = Math.floor(projectile.x / this.map.tileSize);
-            const tileY = Math.floor(projectile.y / this.map.tileSize);
-            if (this.map.isWall(tileX, tileY)) {
+            // Check for coin pickup
+            if (coin.isColliding(this.player)) {
+                this.gameState.addCoin();
                 return false;
             }
-
             return true;
         });
 
-        // Update enemy projectiles (currently disabled)
-        // this.enemyProjectiles = this.enemyProjectiles.filter(projectile => {
-        //     if (!projectile.update()) return false;
-        //     
-        //     // Check for collision with player
-        //     if (projectile.isColliding(this.player)) {
-        //         if (this.player.takeDamage(projectile.damage)) {
-        //             this.gameOver();
-        //         }
-        //         return false;
-        //     }
-        //     
-        //     // Check for wall collisions
-        //     const tileX = Math.floor(projectile.x / this.map.tileSize);
-        //     const tileY = Math.floor(projectile.y / this.map.tileSize);
-        //     if (this.map.isWall(tileX, tileY)) {
-        //         return false;
-        //     }
-        //     
-        //     return true;
-        // });
+        // Only update game objects if not in upgrade state
+        if (this.gameState.currentState === GameState.PLAYING) {
+            // Spawn enemies
+            this.spawnEnemy();
 
-        // Check if wave is complete
-        if (this.enemies.length === 0) {
-            this.wave++;
-            this.spawnEnemies();
+            // Update enemies
+            this.enemies.forEach(enemy => {
+                enemy.update(this.player, this.enemies, this.map);
+                
+                // Enemy shooting logic
+                const projectile = enemy.shootProjectile(this.player.x, this.player.y);
+                if (projectile) {
+                    this.projectiles.push(projectile);
+                }
+            });
+
+            // Update projectiles
+            this.projectiles = this.projectiles.filter(projectile => {
+                projectile.update();
+                
+                // Check for collisions
+                if (projectile.isFromPlayer) {
+                    // Player projectile hitting enemies
+                    for (let i = this.enemies.length - 1; i >= 0; i--) {
+                        if (projectile.isColliding(this.enemies[i])) {
+                            if (this.enemies[i].takeDamage(projectile.damage)) {
+                                this.gameState.updateScore(this.scorePerKill);
+                                // Spawn coin when enemy dies
+                                this.spawnCoin(this.enemies[i].x, this.enemies[i].y);
+                                this.enemies.splice(i, 1);
+                            }
+                            return false;
+                        }
+                    }
+                } else {
+                    // Enemy projectile hitting player
+                    if (projectile.isColliding(this.player)) {
+                        if (this.player.takeDamage(projectile.damage)) {
+                            this.gameState.playerDied();
+                        }
+                        return false;
+                    }
+                }
+
+                // Remove projectiles that are out of bounds
+                return projectile.x >= 0 && 
+                       projectile.x <= this.map.width * this.map.tileSize &&
+                       projectile.y >= 0 && 
+                       projectile.y <= this.map.height * this.map.tileSize;
+            });
+
+            // Check for enemy collisions with player
+            this.enemies.forEach(enemy => {
+                if (enemy.canAttack(this.player)) {
+                    if (this.player.takeDamage(enemy.attack(this.player))) {
+                        this.gameState.playerDied();
+                    }
+                }
+            });
         }
     }
 
-    gameOver() {
-        this.isRunning = false;
-        alert(`Game Over! Score: ${this.score}`);
-        location.reload();
-    }
-
     gameLoop() {
-        if (!this.isRunning) return;
-
         this.update();
-        this.renderer.render(this.map, this.player, this.enemies, this.projectiles);
+        this.renderer.render(this.gameState, this.map, this.player, this.enemies, this.projectiles, this.coins);
         requestAnimationFrame(() => this.gameLoop());
     }
 }

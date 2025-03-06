@@ -15,6 +15,7 @@ class Player extends GameObject {
             right: false
         };
         this.aimLineLength = 50; // Length of the aiming line
+        this.sprite = new Sprite(this.width, this.height, '#00f'); // Blue color for player
     }
 
     move(direction, isMoving) {

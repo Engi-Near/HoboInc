@@ -14,6 +14,7 @@ class Enemy extends GameObject {
             lastShot: 0,
             speed: this.getProjectileSpeedByType()
         };
+        this.sprite = new Sprite(this.width, this.height, '#f00'); // Red color for enemies
     }
 
     getHealthByType() {
@@ -144,10 +145,34 @@ class Enemy extends GameObject {
         return null;
     }
 
-    update(player, enemies) {
+    update(player, enemies, map) {
+        // Store previous position
+        const prevX = this.x;
+        const prevY = this.y;
+
+        // Update position
         super.update();
         this.moveTowardsPlayer(player);
         this.handleEnemyCollisions(enemies);
+
+        // Check for wall collisions
+        const bounds = this.getBounds();
+        const tileX1 = Math.floor(bounds.left / map.tileSize);
+        const tileX2 = Math.floor(bounds.right / map.tileSize);
+        const tileY1 = Math.floor(bounds.top / map.tileSize);
+        const tileY2 = Math.floor(bounds.bottom / map.tileSize);
+
+        // Check horizontal collision
+        if (map.isWall(tileX1, tileY1) || map.isWall(tileX1, tileY2) ||
+            map.isWall(tileX2, tileY1) || map.isWall(tileX2, tileY2)) {
+            this.x = prevX;
+        }
+
+        // Check vertical collision
+        if (map.isWall(tileX1, tileY1) || map.isWall(tileX2, tileY1) ||
+            map.isWall(tileX1, tileY2) || map.isWall(tileX2, tileY2)) {
+            this.y = prevY;
+        }
     }
 
     moveTowardsPlayer(player) {
