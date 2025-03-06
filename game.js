@@ -3,7 +3,8 @@ const ctx = canvas.getContext('2d');
 
 // Game constants
 const GRAVITY = 0.5;
-const JUMP_FORCE = -12;
+const MAX_JUMP_FORCE = -15;
+const JUMP_CHARGE_TIME = 100; // milliseconds
 const BASE_OBSTACLE_SPEED = 5;
 const OBSTACLE_WIDTH = 20;
 const OBSTACLE_HEIGHT = 40;
@@ -25,7 +26,8 @@ let player = {
     x: 50,
     y: canvas.height - PLAYER_SIZE,
     velocityY: 0,
-    isJumping: false
+    isJumping: false,
+    jumpStartTime: 0
 };
 
 let obstacles = [];
@@ -42,9 +44,17 @@ document.addEventListener('keydown', (event) => {
         if (gameOver) {
             resetGame();
         } else if (!player.isJumping) {
-            player.velocityY = JUMP_FORCE;
-            player.isJumping = true;
+            player.jumpStartTime = Date.now();
         }
+    }
+});
+
+document.addEventListener('keyup', (event) => {
+    if (event.code === 'Space' && !player.isJumping) {
+        const holdTime = Date.now() - player.jumpStartTime;
+        const jumpForce = Math.min(holdTime / JUMP_CHARGE_TIME, 1) * MAX_JUMP_FORCE;
+        player.velocityY = jumpForce;
+        player.isJumping = true;
     }
 });
 
@@ -53,6 +63,7 @@ function resetGame() {
     player.y = canvas.height - PLAYER_SIZE;
     player.velocityY = 0;
     player.isJumping = false;
+    player.jumpStartTime = 0;
     obstacles = [];
     score = 0;
     gameOver = false;
