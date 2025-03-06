@@ -37,8 +37,8 @@ let bullets = [];
 let shooter = {
     active: false,
     x: canvas.width,
-    y: canvas.height,
-    targetY: 0,
+    y: canvas.height / 2, // Start in middle of screen
+    targetY: canvas.height / 2, // Target is middle of screen
     moveStartTime: 0
 };
 let score = 0;
@@ -70,8 +70,8 @@ function resetGame() {
     shooter = {
         active: false,
         x: canvas.width,
-        y: canvas.height,
-        targetY: 0,
+        y: canvas.height / 2, // Start in middle of screen
+        targetY: canvas.height / 2, // Target is middle of screen
         moveStartTime: 0
     };
     score = 0;
@@ -110,7 +110,9 @@ function updateShooter() {
         if (score >= SHOOTER_ACTIVATION_SCORE) {
             shooter.active = true;
             shooter.moveStartTime = Date.now();
-            shooter.targetY = canvas.height - (Math.random() * (canvas.height / 2) + OBSTACLE_HEIGHT);
+            shooter.y = canvas.height / 2; // Set initial position to middle
+            shooter.targetY = canvas.height / 2; // Set target to middle
+            console.log('Shooter activated at score:', score);
         }
         return;
     }
@@ -118,7 +120,7 @@ function updateShooter() {
     // Move shooter to target position
     const currentTime = Date.now();
     const moveProgress = Math.min((currentTime - shooter.moveStartTime) / SHOOTER_MOVE_TIME, 1);
-    shooter.y = canvas.height - (moveProgress * (canvas.height - shooter.targetY));
+    shooter.y = canvas.height / 2; // Keep shooter in middle
 
     // Create bullet when shooter reaches position
     if (moveProgress >= 1 && bullets.length === 0) {
@@ -227,13 +229,15 @@ function draw() {
 
     // Draw shooter
     if (shooter.active) {
-        ctx.fillStyle = 'purple';
+        ctx.fillStyle = 'white';
         ctx.fillRect(shooter.x - 10, shooter.y - 20, 20, 40);
+        // Debug log to verify shooter is being drawn
+        console.log('Drawing shooter at y:', shooter.y);
     }
 
     // Draw bullets
     for (let bullet of bullets) {
-        ctx.fillStyle = 'yellow';
+        ctx.fillStyle = 'white';
         ctx.beginPath();
         ctx.arc(bullet.x, bullet.y, bullet.radius, 0, Math.PI * 2);
         ctx.fill();
