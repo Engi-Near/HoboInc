@@ -145,41 +145,18 @@ class Game {
             const enemyTypes = ['basic', 'tank', 'ranged'];
             const type = enemyTypes[Math.floor(Math.random() * enemyTypes.length)];
             
-            // Calculate spawn position along the edges of the visible area
-            const spawnMargin = 64; // Distance from the edge of the visible area
-            const visibleLeft = this.player.x - this.canvas.width / 2;
-            const visibleRight = this.player.x + this.canvas.width / 2;
-            const visibleTop = this.player.y - this.canvas.height / 2;
-            const visibleBottom = this.player.y + this.canvas.height / 2;
+            // Calculate map boundaries with margin
+            const margin = 64; // Keep enemies away from the very edge
+            const minX = margin;
+            const maxX = (this.map.width * this.map.tileSize) - margin;
+            const minY = margin;
+            const maxY = (this.map.height * this.map.tileSize) - margin;
+
+            // Generate random position within map boundaries
+            const x = minX + Math.random() * (maxX - minX);
+            const y = minY + Math.random() * (maxY - minY);
             
-            // Ensure spawn position is within map boundaries
-            const mapLeft = spawnMargin;
-            const mapRight = (this.map.width * this.map.tileSize) - spawnMargin;
-            const mapTop = spawnMargin;
-            const mapBottom = (this.map.height * this.map.tileSize) - spawnMargin;
-            
-            let x, y;
-            const side = Math.floor(Math.random() * 4); // 0: top, 1: right, 2: bottom, 3: left
-            
-            switch(side) {
-                case 0: // top
-                    x = Math.max(mapLeft, Math.min(mapRight, visibleLeft + Math.random() * this.canvas.width));
-                    y = Math.max(mapTop, Math.min(visibleTop - spawnMargin, mapBottom));
-                    break;
-                case 1: // right
-                    x = Math.min(mapRight, Math.max(visibleRight + spawnMargin, mapLeft));
-                    y = Math.max(mapTop, Math.min(mapBottom, visibleTop + Math.random() * this.canvas.height));
-                    break;
-                case 2: // bottom
-                    x = Math.max(mapLeft, Math.min(mapRight, visibleLeft + Math.random() * this.canvas.width));
-                    y = Math.min(mapBottom, Math.max(visibleBottom + spawnMargin, mapTop));
-                    break;
-                case 3: // left
-                    x = Math.max(mapLeft, Math.min(visibleLeft - spawnMargin, mapRight));
-                    y = Math.max(mapTop, Math.min(mapBottom, visibleTop + Math.random() * this.canvas.height));
-                    break;
-            }
-            
+            // Create and add the enemy
             this.enemies.push(new Enemy(x, y, type));
             this.lastEnemySpawn = now;
         }
