@@ -16,6 +16,7 @@ class Player extends GameObject {
         };
         this.aimLineLength = 50; // Length of the aiming line
         this.sprite = new Sprite(this.width, this.height, '#00f'); // Blue color for player
+        this.pickupRange = 100; // Range for coin pickup
     }
 
     move(direction, isMoving) {
@@ -75,26 +76,42 @@ class Player extends GameObject {
         }
     }
 
-    shoot(targetX, targetY) {
+    aim(screenX, screenY) {
+        // Convert screen coordinates to world coordinates
+        const centerX = this.x + this.width / 2;
+        const centerY = this.y + this.height / 2;
+        const dx = screenX - (window.innerWidth * 0.8 / 2);
+        const dy = screenY - (window.innerHeight * 0.8 / 2);
+        this.angle = Math.atan2(dy, dx);
+    }
+
+    shoot(screenX, screenY) {
         const now = Date.now();
         if (now - this.weapon.lastShot >= this.weapon.fireRate) {
             this.weapon.lastShot = now;
             
-            // Calculate angle to target
-            const dx = targetX - (this.x + this.width / 2);
-            const dy = targetY - (this.y + this.height / 2);
+            // Calculate angle to target using screen coordinates
+            const dx = screenX - (window.innerWidth * 0.8 / 2);
+            const dy = screenY - (window.innerHeight * 0.8 / 2);
             const angle = Math.atan2(dy, dx);
             
-            return new Projectile(
+            const projectile = new Projectile(
                 this.x + this.width / 2,
                 this.y + this.height / 2,
                 8,
                 8,
                 10,
-                20,
+                this.weapon.damage,
                 3, // penetration
                 100 // knockback
             );
+            
+            // Set projectile properties
+            projectile.setDirection(angle);
+            projectile.isFromPlayer = true;
+            projectile.isFriendly = true; // Mark as friendly projectile
+            
+            return projectile;
         }
         return null;
     }

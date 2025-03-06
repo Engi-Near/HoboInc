@@ -3,8 +3,10 @@ class Game {
         this.canvas = document.getElementById('gameCanvas');
         this.renderer = new Renderer(this.canvas);
         this.gameState = new GameState();
-        this.map = new Map(100, 100);
-        this.player = new Player(50, 50);
+        
+        // Initialize these as null until game starts
+        this.map = null;
+        this.player = null;
         this.enemies = [];
         this.projectiles = [];
         this.coins = [];
@@ -19,7 +21,7 @@ class Game {
     setupEventListeners() {
         // Mouse movement for aiming
         this.canvas.addEventListener('mousemove', (e) => {
-            if (this.gameState.currentState === GameState.PLAYING) {
+            if (this.gameState.currentState === GameState.PLAYING && this.player) {
                 const rect = this.canvas.getBoundingClientRect();
                 const mouseX = e.clientX - rect.left;
                 const mouseY = e.clientY - rect.top;
@@ -29,7 +31,7 @@ class Game {
 
         // Mouse click for shooting
         this.canvas.addEventListener('click', (e) => {
-            if (this.gameState.currentState === GameState.PLAYING) {
+            if (this.gameState.currentState === GameState.PLAYING && this.player) {
                 const rect = this.canvas.getBoundingClientRect();
                 const mouseX = e.clientX - rect.left;
                 const mouseY = e.clientY - rect.top;
@@ -124,12 +126,12 @@ class Game {
     }
 
     resetGameState() {
+        this.map = new Map(100, 100);
         this.player = new Player(50, 50);
         this.enemies = [];
         this.projectiles = [];
         this.coins = [];
         this.lastEnemySpawn = 0;
-        this.map = new Map(100, 100);
     }
 
     spawnEnemy() {
@@ -174,6 +176,8 @@ class Game {
         if (this.gameState.currentState !== GameState.PLAYING && 
             this.gameState.currentState !== GameState.UPGRADE) return;
 
+        if (!this.player || !this.map) return;
+
         // Update player
         this.player.update(this.map);
 
@@ -201,6 +205,8 @@ class Game {
                 // Enemy shooting logic
                 const projectile = enemy.shootProjectile(this.player.x, this.player.y);
                 if (projectile) {
+                    projectile.isFromPlayer = false;
+                    projectile.isFriendly = false;
                     this.projectiles.push(projectile);
                 }
             });
@@ -210,8 +216,8 @@ class Game {
                 projectile.update();
                 
                 // Check for collisions
-                if (projectile.isFromPlayer) {
-                    // Player projectile hitting enemies
+                if (projectile.isFriendly) {
+                    // Friendly projectile hitting enemies
                     for (let i = this.enemies.length - 1; i >= 0; i--) {
                         if (projectile.isColliding(this.enemies[i])) {
                             if (this.enemies[i].takeDamage(projectile.damage)) {
