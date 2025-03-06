@@ -24,21 +24,27 @@ class Renderer {
                 this.renderMenu();
                 break;
             case GameState.PLAYING:
-                this.renderGame(map, player, enemies, projectiles, coins);
-                this.renderScore(gameState.score);
-                this.renderUpgradeBar(gameState.coins, gameState.upgradeCost);
+            case GameState.UPGRADE:
+                if (map && player) {
+                    this.renderGame(map, player, enemies, projectiles, coins);
+                    this.renderScore(gameState.score);
+                    this.renderUpgradeBar(gameState.coins, gameState.upgradeCost);
+                    if (gameState.currentState === GameState.UPGRADE) {
+                        this.renderUpgradePrompt();
+                    }
+                }
                 break;
             case GameState.GAME_OVER:
+                if (map && player) {
+                    this.renderGame(map, player, enemies, projectiles, coins);
+                }
                 this.renderGameOver();
                 break;
             case GameState.VICTORY:
+                if (map && player) {
+                    this.renderGame(map, player, enemies, projectiles, coins);
+                }
                 this.renderVictory();
-                break;
-            case GameState.UPGRADE:
-                this.renderGame(map, player, enemies, projectiles, coins);
-                this.renderScore(gameState.score);
-                this.renderUpgradeBar(gameState.coins, gameState.upgradeCost);
-                this.renderUpgradePrompt();
                 break;
         }
     }

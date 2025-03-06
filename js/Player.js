@@ -17,8 +17,6 @@ class Player extends GameObject {
         this.aimLineLength = 50; // Length of the aiming line
         this.sprite = new Sprite(this.width, this.height, '#00f'); // Blue color for player
         this.pickupRange = 100; // Range for coin pickup
-        this.mouseX = 0; // Track mouse position
-        this.mouseY = 0;
     }
 
     move(direction, isMoving) {
@@ -78,13 +76,19 @@ class Player extends GameObject {
         }
     }
 
-    aim(screenX, screenY, canvasWidth, canvasHeight) {
-        // Store the mouse position relative to the center of the screen
-        this.mouseX = screenX - canvasWidth / 2;
-        this.mouseY = screenY - canvasHeight / 2;
+    aim(mouseX, mouseY, cameraX, cameraY) {
+        // Convert screen coordinates to world coordinates
+        const worldMouseX = mouseX + cameraX;
+        const worldMouseY = mouseY + cameraY;
+
+        // Calculate angle from player center to mouse position
+        const playerCenterX = this.x + this.width / 2;
+        const playerCenterY = this.y + this.height / 2;
         
-        // Calculate angle
-        this.angle = Math.atan2(this.mouseY, this.mouseX);
+        const dx = worldMouseX - playerCenterX;
+        const dy = worldMouseY - playerCenterY;
+        
+        this.angle = Math.atan2(dy, dx);
     }
 
     shoot() {
@@ -103,7 +107,6 @@ class Player extends GameObject {
                 100 // knockback
             );
             
-            // Use the stored angle for projectile direction
             projectile.setDirection(this.angle);
             projectile.isFromPlayer = true;
             projectile.isFriendly = true;

@@ -25,7 +25,12 @@ class Game {
                 const rect = this.canvas.getBoundingClientRect();
                 const mouseX = e.clientX - rect.left;
                 const mouseY = e.clientY - rect.top;
-                this.player.aim(mouseX, mouseY, this.canvas.width, this.canvas.height);
+                
+                // Calculate camera position (centered on player)
+                const cameraX = this.player.x - this.canvas.width / 2;
+                const cameraY = this.player.y - this.canvas.height / 2;
+                
+                this.player.aim(mouseX, mouseY, cameraX, cameraY);
             }
         });
 
