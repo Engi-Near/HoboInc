@@ -1,13 +1,10 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Commander Shoot</title>
     <style>
         body {
             margin: 0;
-            padding: 0;
             display: flex;
             justify-content: center;
             align-items: center;
@@ -15,17 +12,26 @@
             background-color: #000;
         }
         canvas {
-            border: 1px solid #333;
+            border: 2px solid #333;
         }
     </style>
 </head>
 <body>
     <canvas id="gameCanvas"></canvas>
+
+    <!-- Core game objects -->
     <script src="js/GameObject.js"></script>
+    <script src="js/Sprite.js"></script>
+    <script src="js/GameState.js"></script>
+
+    <!-- Game entities -->
     <script src="js/Player.js"></script>
     <script src="js/Enemy.js"></script>
     <script src="js/Projectile.js"></script>
+    <script src="js/Coin.js"></script>
     <script src="js/Map.js"></script>
+
+    <!-- Game systems -->
     <script src="js/Renderer.js"></script>
     <script src="js/Game.js"></script>
 </body>
