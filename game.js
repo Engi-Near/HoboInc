@@ -3,7 +3,7 @@ const ctx = canvas.getContext('2d');
 
 // Game constants
 const GRAVITY = 0.5;
-const JUMP_FORCE = -8;
+const JUMP_FORCE = -12;
 const BASE_OBSTACLE_SPEED = 5;
 const OBSTACLE_WIDTH = 20;
 const OBSTACLE_HEIGHT = 40;
@@ -12,7 +12,7 @@ const BASE_SCORE_INTERVAL = 500; // 0.5 seconds in milliseconds
 const SPEED_RAMP_INTERVAL = 250; // 0.25 seconds in milliseconds
 const MAX_SPEED_MULTIPLIER = 5;
 const TIME_TO_MAX_SPEED = 120000; // 2 minutes in milliseconds
-const SHOOTER_ACTIVATION_SCORE = 10;
+const SHOOTER_ACTIVATION_SCORE = 250;
 const SHOOTER_MOVE_TIME = 250; // milliseconds
 const BULLET_SPEED_MULTIPLIER = 1.25;
 const BULLET_RADIUS = 5;
@@ -55,16 +55,6 @@ document.addEventListener('keydown', (event) => {
             resetGame();
         } else if (!player.isJumping) {
             player.velocityY = JUMP_FORCE;
-            player.isJumping = true;
-        }
-    }
-});
-
-document.addEventListener('keyup', (event) => {
-    if (event.code === 'Space' && !player.isJumping) {
-        const holdTime = Date.now() - player.jumpStartTime;
-        if (holdTime < JUMP_THRESHOLD) {
-            player.velocityY = NORMAL_JUMP_FORCE;
             player.isJumping = true;
         }
     }
