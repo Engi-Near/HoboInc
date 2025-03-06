@@ -47,7 +47,7 @@ class Game {
             this.mapWidth = this.map.width;
             this.mapHeight = this.map.height;
         };
-        this.map.src = src;
+        this.map.src = "map.png";
     }
 
     handleKeyDown(e) {
