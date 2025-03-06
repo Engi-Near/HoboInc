@@ -3,9 +3,9 @@ const ctx = canvas.getContext('2d');
 
 // Game constants
 const GRAVITY = 0.5;
-const MAX_JUMP_FORCE = -15;
-const MIN_JUMP_FORCE = -8;
-const JUMP_CHARGE_TIME = 20; // milliseconds
+const NORMAL_JUMP_FORCE = -8;
+const STRONG_JUMP_FORCE = -16;
+const JUMP_THRESHOLD = 25; // milliseconds
 const BASE_OBSTACLE_SPEED = 5;
 const OBSTACLE_WIDTH = 20;
 const OBSTACLE_HEIGHT = 40;
@@ -65,9 +65,7 @@ document.addEventListener('keydown', (event) => {
 document.addEventListener('keyup', (event) => {
     if (event.code === 'Space' && !player.isJumping) {
         const holdTime = Date.now() - player.jumpStartTime;
-        const chargeRatio = Math.min(holdTime / JUMP_CHARGE_TIME, 1);
-        const jumpForce = MIN_JUMP_FORCE + (chargeRatio * (MAX_JUMP_FORCE - MIN_JUMP_FORCE));
-        player.velocityY = jumpForce;
+        player.velocityY = holdTime >= JUMP_THRESHOLD ? STRONG_JUMP_FORCE : NORMAL_JUMP_FORCE;
         player.isJumping = true;
     }
 });
