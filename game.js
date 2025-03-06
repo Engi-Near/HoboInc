@@ -5,7 +5,7 @@ const ctx = canvas.getContext('2d');
 const GRAVITY = 0.5;
 const MAX_JUMP_FORCE = -15;
 const MIN_JUMP_FORCE = -8;
-const JUMP_CHARGE_TIME = 50; // milliseconds
+const JUMP_CHARGE_TIME = 20; // milliseconds
 const BASE_OBSTACLE_SPEED = 5;
 const OBSTACLE_WIDTH = 20;
 const OBSTACLE_HEIGHT = 40;
@@ -14,6 +14,10 @@ const BASE_SCORE_INTERVAL = 500; // 0.5 seconds in milliseconds
 const SPEED_RAMP_INTERVAL = 250; // 0.25 seconds in milliseconds
 const MAX_SPEED_MULTIPLIER = 5;
 const TIME_TO_MAX_SPEED = 120000; // 2 minutes in milliseconds
+const SHOOTER_ACTIVATION_SCORE = 250;
+const SHOOTER_MOVE_TIME = 250; // milliseconds
+const BULLET_SPEED_MULTIPLIER = 1.25;
+const BULLET_RADIUS = 5;
 
 // Image loading
 const playerImage = new Image();
@@ -32,6 +36,14 @@ let player = {
 };
 
 let obstacles = [];
+let bullets = [];
+let shooter = {
+    active: false,
+    x: canvas.width,
+    y: canvas.height,
+    targetY: 0,
+    moveStartTime: 0
+};
 let score = 0;
 let gameOver = false;
 let lastScoreTime = 0;
@@ -67,6 +79,14 @@ function resetGame() {
     player.isJumping = false;
     player.jumpStartTime = 0;
     obstacles = [];
+    bullets = [];
+    shooter = {
+        active: false,
+        x: canvas.width,
+        y: canvas.height,
+        targetY: 0,
+        moveStartTime: 0
+    };
     score = 0;
     gameOver = false;
     lastScoreTime = 0;
@@ -84,10 +104,39 @@ function createObstacle() {
     });
 }
 
+function createBullet() {
+    bullets.push({
+        x: shooter.x,
+        y: shooter.y,
+        radius: BULLET_RADIUS
+    });
+}
+
 function updateSpeedMultiplier() {
     const gameTime = Date.now() - gameStartTime;
     currentSpeedMultiplier = 1 + (gameTime / TIME_TO_MAX_SPEED) * (MAX_SPEED_MULTIPLIER - 1);
     currentSpeedMultiplier = Math.min(currentSpeedMultiplier, MAX_SPEED_MULTIPLIER);
+}
+
+function updateShooter() {
+    if (!shooter.active) {
+        if (score >= SHOOTER_ACTIVATION_SCORE) {
+            shooter.active = true;
+            shooter.moveStartTime = Date.now();
+            shooter.targetY = canvas.height - (Math.random() * (canvas.height / 2) + OBSTACLE_HEIGHT);
+        }
+        return;
+    }
+
+    // Move shooter to target position
+    const currentTime = Date.now();
+    const moveProgress = Math.min((currentTime - shooter.moveStartTime) / SHOOTER_MOVE_TIME, 1);
+    shooter.y = canvas.height - (moveProgress * (canvas.height - shooter.targetY));
+
+    // Create bullet when shooter reaches position
+    if (moveProgress >= 1 && bullets.length === 0) {
+        createBullet();
+    }
 }
 
 function update() {
@@ -95,6 +144,9 @@ function update() {
 
     // Update speed multiplier
     updateSpeedMultiplier();
+
+    // Update shooter
+    updateShooter();
 
     // Update player
     player.velocityY += GRAVITY;
@@ -132,6 +184,26 @@ function update() {
         }
     }
 
+    // Update bullets
+    const bulletSpeed = currentObstacleSpeed * BULLET_SPEED_MULTIPLIER;
+    for (let i = bullets.length - 1; i >= 0; i--) {
+        bullets[i].x -= bulletSpeed;
+        if (bullets[i].x + bullets[i].radius < 0) {
+            bullets.splice(i, 1);
+        }
+    }
+
+    // Collision detection with bullets
+    for (let bullet of bullets) {
+        const dx = (player.x + PLAYER_SIZE/2) - bullet.x;
+        const dy = (player.y + PLAYER_SIZE/2) - bullet.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        if (distance < PLAYER_SIZE/2 + bullet.radius) {
+            gameOver = true;
+            break;
+        }
+    }
+
     // Collision detection
     for (let obstacle of obstacles) {
         if (player.x < obstacle.x + obstacle.width &&
@@ -164,6 +236,20 @@ function draw() {
             ctx.fillStyle = 'red';
             ctx.fillRect(obstacle.x, obstacle.y, obstacle.width, obstacle.height);
         }
+    }
+
+    // Draw shooter
+    if (shooter.active) {
+        ctx.fillStyle = 'purple';
+        ctx.fillRect(shooter.x - 10, shooter.y - 20, 20, 40);
+    }
+
+    // Draw bullets
+    for (let bullet of bullets) {
+        ctx.fillStyle = 'yellow';
+        ctx.beginPath();
+        ctx.arc(bullet.x, bullet.y, bullet.radius, 0, Math.PI * 2);
+        ctx.fill();
     }
 
     // Draw score
