@@ -86,7 +86,7 @@ function update() {
     }
 
     // Create obstacles at random intervals
-    if (currentTime - lastObstacleTime >= Math.random() * 2000 + 1000) { // Random between 1000-3000ms
+    if (currentTime - lastObstacleTime >= Math.random() * Math.random() * 1000 + 750) { // Random between 1000-3000ms
         createObstacle();
         lastObstacleTime = currentTime;
     }
