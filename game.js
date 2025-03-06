@@ -4,7 +4,7 @@ const ctx = canvas.getContext('2d');
 // Game constants
 const GRAVITY = 0.5;
 const MAX_JUMP_FORCE = -15;
-const JUMP_CHARGE_TIME = 100; // milliseconds
+const JUMP_CHARGE_TIME = 50; // milliseconds
 const BASE_OBSTACLE_SPEED = 5;
 const OBSTACLE_WIDTH = 20;
 const OBSTACLE_HEIGHT = 40;
