@@ -2,11 +2,6 @@ class Player extends GameObject {
     constructor(x, y) {
         super(x, y, 32, 32, 5);
         this.health = 100;
-        this.weapon = {
-            damage: 20,
-            fireRate: 250, // milliseconds
-            lastShot: 0
-        };
         this.angle = 0;
         this.movementKeys = {
             up: false,
@@ -17,6 +12,21 @@ class Player extends GameObject {
         this.aimLineLength = 50; // Length of the aiming line
         this.sprite = new Sprite(this.width, this.height, '#00f'); // Blue color for player
         this.pickupRange = 100; // Range for coin pickup
+
+        // Initialize weapons
+        this.weapons = {
+            pistol: new Weapon('pistol'),
+            shotgun: new Weapon('shotgun'),
+            machinegun: new Weapon('machinegun')
+        };
+        this.currentWeapon = this.weapons.pistol; // Start with pistol
+    }
+
+    // Add method to switch weapons
+    switchWeapon(weaponType) {
+        if (this.weapons[weaponType]) {
+            this.currentWeapon = this.weapons[weaponType];
+        }
     }
 
     move(direction, isMoving) {
@@ -92,28 +102,13 @@ class Player extends GameObject {
     }
 
     shoot() {
-        const now = Date.now();
-        if (now - this.weapon.lastShot >= this.weapon.fireRate) {
-            this.weapon.lastShot = now;
-
-            const projectile = new Projectile(
-                this.x + this.width / 2,
-                this.y + this.height / 2,
-                8,
-                8,
-                10,
-                this.weapon.damage,
-                3, // penetration
-                100 // knockback
-            );
-            
-            projectile.setDirection(this.angle);
-            projectile.isFromPlayer = true;
-            projectile.isFriendly = true;
-            
-            return projectile;
-        }
-        return null;
+        const projectiles = this.currentWeapon.shoot(
+            this.x + this.width / 2,
+            this.y + this.height / 2,
+            this.angle
+        );
+        
+        return projectiles;
     }
 
     takeDamage(amount) {

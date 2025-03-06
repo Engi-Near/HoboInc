@@ -14,6 +14,9 @@ class Game {
         this.enemySpawnInterval = 2000; // 2 seconds
         this.scorePerKill = 100;
 
+        // Make game instance globally available for weapon system
+        window.game = this;
+
         this.setupEventListeners();
         this.gameLoop();
     }
@@ -37,9 +40,9 @@ class Game {
         // Mouse click for shooting
         this.canvas.addEventListener('click', (e) => {
             if (this.gameState.currentState === GameState.PLAYING && this.player) {
-                const projectile = this.player.shoot();
-                if (projectile) {
-                    this.projectiles.push(projectile);
+                const projectiles = this.player.shoot();
+                if (projectiles && projectiles.length > 0) {
+                    this.projectiles.push(...projectiles);
                 }
             }
         });
@@ -60,12 +63,16 @@ class Game {
 
         // Keyboard controls
         window.addEventListener('keydown', (e) => {
-            if (this.gameState.currentState === GameState.PLAYING) {
+            if (this.gameState.currentState === GameState.PLAYING && this.player) {
                 switch(e.key.toLowerCase()) {
                     case 'w': this.player.move('up', true); break;
                     case 's': this.player.move('down', true); break;
                     case 'a': this.player.move('left', true); break;
                     case 'd': this.player.move('right', true); break;
+                    // Weapon switching
+                    case '1': this.player.switchWeapon('pistol'); break;
+                    case '2': this.player.switchWeapon('shotgun'); break;
+                    case '3': this.player.switchWeapon('machinegun'); break;
                 }
             }
         });
