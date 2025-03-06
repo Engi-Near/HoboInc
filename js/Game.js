@@ -16,6 +16,8 @@ class Game {
         
         // Input handling
         this.keys = {};
+        this.mouseX = 0;
+        this.mouseY = 0;
         this.setupInputHandlers();
         
         // Start game loop
@@ -61,17 +63,17 @@ class Game {
 
         window.addEventListener('mousemove', (e) => {
             const rect = this.canvas.getBoundingClientRect();
-            const mouseX = e.clientX - rect.left;
-            const mouseY = e.clientY - rect.top;
+            this.mouseX = e.clientX - rect.left;
+            this.mouseY = e.clientY - rect.top;
             
             // Calculate angle between player and mouse
-            const dx = mouseX - (this.player.x + this.player.width / 2);
-            const dy = mouseY - (this.player.y + this.player.height / 2);
+            const dx = this.mouseX - (this.player.x + this.player.width / 2);
+            const dy = this.mouseY - (this.player.y + this.player.height / 2);
             this.player.angle = Math.atan2(dy, dx);
         });
 
         window.addEventListener('click', () => {
-            const projectile = this.player.shoot();
+            const projectile = this.player.shoot(this.mouseX, this.mouseY);
             if (projectile) {
                 projectile.setDirection(this.player.angle);
                 this.projectiles.push(projectile);
@@ -121,9 +123,9 @@ class Game {
         // Update player movement and collision
         this.player.update(this.map);
 
-        // Update enemies
+        // Update enemies with collision handling
         this.enemies.forEach(enemy => {
-            enemy.update(this.player);
+            enemy.update(this.player, this.enemies);
             
             // Check for enemy attacks
             if (enemy.canAttack(this.player)) {
@@ -136,18 +138,25 @@ class Game {
             }
         });
 
-        // Update projectiles
+        // Update projectiles with penetration and knockback
         this.projectiles = this.projectiles.filter(projectile => {
             if (!projectile.update()) return false;
 
             // Check for projectile collisions with enemies
             for (let i = this.enemies.length - 1; i >= 0; i--) {
-                if (projectile.isColliding(this.enemies[i])) {
+                if (projectile.isColliding(this.enemies[i]) && !projectile.hasHitEnemy(this.enemies[i])) {
                     if (this.enemies[i].takeDamage(projectile.damage)) {
                         this.enemies.splice(i, 1);
                         this.score += 100;
+                    } else {
+                        projectile.applyKnockback(this.enemies[i]);
                     }
-                    return false;
+                    projectile.markEnemyHit(this.enemies[i]);
+                    
+                    // Remove projectile if it can't penetrate anymore
+                    if (!projectile.canPenetrate()) {
+                        return false;
+                    }
                 }
             }
 
