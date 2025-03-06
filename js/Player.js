@@ -17,6 +17,8 @@ class Player extends GameObject {
         this.aimLineLength = 50; // Length of the aiming line
         this.sprite = new Sprite(this.width, this.height, '#00f'); // Blue color for player
         this.pickupRange = 100; // Range for coin pickup
+        this.mouseX = 0; // Track mouse position
+        this.mouseY = 0;
     }
 
     move(direction, isMoving) {
@@ -76,31 +78,20 @@ class Player extends GameObject {
         }
     }
 
-    aim(mouseX, mouseY, cameraX, cameraY) {
-        // Convert screen coordinates to world coordinates
-        const worldMouseX = mouseX + cameraX;
-        const worldMouseY = mouseY + cameraY;
+    aim(screenX, screenY, canvasWidth, canvasHeight) {
+        // Store the mouse position relative to the center of the screen
+        this.mouseX = screenX - canvasWidth / 2;
+        this.mouseY = screenY - canvasHeight / 2;
         
-        // Calculate angle between player center and world mouse position
-        const dx = worldMouseX - (this.x + this.width / 2);
-        const dy = worldMouseY - (this.y + this.height / 2);
-        this.angle = Math.atan2(dy, dx);
+        // Calculate angle
+        this.angle = Math.atan2(this.mouseY, this.mouseX);
     }
 
-    shoot(mouseX, mouseY, cameraX, cameraY) {
+    shoot() {
         const now = Date.now();
         if (now - this.weapon.lastShot >= this.weapon.fireRate) {
             this.weapon.lastShot = now;
-            
-            // Convert screen coordinates to world coordinates
-            const worldMouseX = mouseX + cameraX;
-            const worldMouseY = mouseY + cameraY;
-            
-            // Calculate angle between player center and world mouse position
-            const dx = worldMouseX - (this.x + this.width / 2);
-            const dy = worldMouseY - (this.y + this.height / 2);
-            const angle = Math.atan2(dy, dx);
-            
+
             const projectile = new Projectile(
                 this.x + this.width / 2,
                 this.y + this.height / 2,
@@ -112,10 +103,10 @@ class Player extends GameObject {
                 100 // knockback
             );
             
-            // Set projectile properties
-            projectile.setDirection(angle);
+            // Use the stored angle for projectile direction
+            projectile.setDirection(this.angle);
             projectile.isFromPlayer = true;
-            projectile.isFriendly = true; // Mark as friendly projectile
+            projectile.isFriendly = true;
             
             return projectile;
         }

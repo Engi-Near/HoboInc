@@ -25,27 +25,14 @@ class Game {
                 const rect = this.canvas.getBoundingClientRect();
                 const mouseX = e.clientX - rect.left;
                 const mouseY = e.clientY - rect.top;
-                
-                // Calculate camera position
-                const cameraX = this.player.x - this.canvas.width / 2;
-                const cameraY = this.player.y - this.canvas.height / 2;
-                
-                this.player.aim(mouseX, mouseY, cameraX, cameraY);
+                this.player.aim(mouseX, mouseY, this.canvas.width, this.canvas.height);
             }
         });
 
         // Mouse click for shooting
         this.canvas.addEventListener('click', (e) => {
             if (this.gameState.currentState === GameState.PLAYING && this.player) {
-                const rect = this.canvas.getBoundingClientRect();
-                const mouseX = e.clientX - rect.left;
-                const mouseY = e.clientY - rect.top;
-                
-                // Calculate camera position
-                const cameraX = this.player.x - this.canvas.width / 2;
-                const cameraY = this.player.y - this.canvas.height / 2;
-                
-                const projectile = this.player.shoot(mouseX, mouseY, cameraX, cameraY);
+                const projectile = this.player.shoot();
                 if (projectile) {
                     this.projectiles.push(projectile);
                 }
