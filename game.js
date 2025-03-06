@@ -5,7 +5,7 @@ const ctx = canvas.getContext('2d');
 const GRAVITY = 0.5;
 const NORMAL_JUMP_FORCE = -8;
 const STRONG_JUMP_FORCE = -16;
-const JUMP_THRESHOLD = 40; // milliseconds
+const JUMP_THRESHOLD = 50; // milliseconds
 const BASE_OBSTACLE_SPEED = 5;
 const OBSTACLE_WIDTH = 20;
 const OBSTACLE_HEIGHT = 40;
@@ -65,8 +65,10 @@ document.addEventListener('keydown', (event) => {
 document.addEventListener('keyup', (event) => {
     if (event.code === 'Space' && !player.isJumping) {
         const holdTime = Date.now() - player.jumpStartTime;
-        player.velocityY = holdTime >= JUMP_THRESHOLD ? STRONG_JUMP_FORCE : NORMAL_JUMP_FORCE;
-        player.isJumping = true;
+        if (holdTime < JUMP_THRESHOLD) {
+            player.velocityY = NORMAL_JUMP_FORCE;
+            player.isJumping = true;
+        }
     }
 });
 
@@ -139,6 +141,16 @@ function updateShooter() {
 
 function update() {
     if (gameOver) return;
+
+    // Check for auto-jump
+    if (!player.isJumping && player.jumpStartTime > 0) {
+        const holdTime = Date.now() - player.jumpStartTime;
+        if (holdTime >= JUMP_THRESHOLD) {
+            player.velocityY = STRONG_JUMP_FORCE;
+            player.isJumping = true;
+            player.jumpStartTime = 0;
+        }
+    }
 
     // Update speed multiplier
     updateSpeedMultiplier();
