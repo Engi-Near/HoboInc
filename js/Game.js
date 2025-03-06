@@ -8,6 +8,7 @@ class Game {
         this.player = new Player(1600, 1600); // Start player in middle of map
         this.enemies = [];
         this.projectiles = [];
+        this.enemyProjectiles = []; // Separate array for enemy projectiles
         
         // Game state
         this.isRunning = false;
@@ -138,7 +139,7 @@ class Game {
         this.enemies.forEach(enemy => {
             enemy.update(this.player, this.enemies);
             
-            // Check for enemy attacks
+            // Check for direct collision with player
             if (enemy.canAttack(this.player)) {
                 const damage = enemy.attack(this.player);
                 if (damage > 0) {
@@ -147,9 +148,21 @@ class Game {
                     }
                 }
             }
+
+            // Enemy projectile shooting (currently disabled)
+            // if (enemy.type === 'ranged') {
+            //     const projectile = enemy.shootProjectile(this.player.x, this.player.y);
+            //     if (projectile) {
+            //         projectile.setDirection(Math.atan2(
+            //             this.player.y - enemy.y,
+            //             this.player.x - enemy.x
+            //         ));
+            //         this.enemyProjectiles.push(projectile);
+            //     }
+            // }
         });
 
-        // Update projectiles with penetration and knockback
+        // Update player projectiles
         this.projectiles = this.projectiles.filter(projectile => {
             if (!projectile.update()) return false;
 
@@ -180,6 +193,28 @@ class Game {
 
             return true;
         });
+
+        // Update enemy projectiles (currently disabled)
+        // this.enemyProjectiles = this.enemyProjectiles.filter(projectile => {
+        //     if (!projectile.update()) return false;
+        //     
+        //     // Check for collision with player
+        //     if (projectile.isColliding(this.player)) {
+        //         if (this.player.takeDamage(projectile.damage)) {
+        //             this.gameOver();
+        //         }
+        //         return false;
+        //     }
+        //     
+        //     // Check for wall collisions
+        //     const tileX = Math.floor(projectile.x / this.map.tileSize);
+        //     const tileY = Math.floor(projectile.y / this.map.tileSize);
+        //     if (this.map.isWall(tileX, tileY)) {
+        //         return false;
+        //     }
+        //     
+        //     return true;
+        // });
 
         // Check if wave is complete
         if (this.enemies.length === 0) {
