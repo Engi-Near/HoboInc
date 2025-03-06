@@ -76,23 +76,29 @@ class Player extends GameObject {
         }
     }
 
-    aim(screenX, screenY) {
+    aim(mouseX, mouseY, cameraX, cameraY) {
         // Convert screen coordinates to world coordinates
-        const centerX = this.x + this.width / 2;
-        const centerY = this.y + this.height / 2;
-        const dx = screenX - (window.innerWidth * 0.8 / 2);
-        const dy = screenY - (window.innerHeight * 0.8 / 2);
+        const worldMouseX = mouseX + cameraX;
+        const worldMouseY = mouseY + cameraY;
+        
+        // Calculate angle between player center and world mouse position
+        const dx = worldMouseX - (this.x + this.width / 2);
+        const dy = worldMouseY - (this.y + this.height / 2);
         this.angle = Math.atan2(dy, dx);
     }
 
-    shoot(screenX, screenY) {
+    shoot(mouseX, mouseY, cameraX, cameraY) {
         const now = Date.now();
         if (now - this.weapon.lastShot >= this.weapon.fireRate) {
             this.weapon.lastShot = now;
             
-            // Calculate angle to target using screen coordinates
-            const dx = screenX - (window.innerWidth * 0.8 / 2);
-            const dy = screenY - (window.innerHeight * 0.8 / 2);
+            // Convert screen coordinates to world coordinates
+            const worldMouseX = mouseX + cameraX;
+            const worldMouseY = mouseY + cameraY;
+            
+            // Calculate angle between player center and world mouse position
+            const dx = worldMouseX - (this.x + this.width / 2);
+            const dy = worldMouseY - (this.y + this.height / 2);
             const angle = Math.atan2(dy, dx);
             
             const projectile = new Projectile(

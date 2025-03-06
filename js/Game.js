@@ -25,7 +25,12 @@ class Game {
                 const rect = this.canvas.getBoundingClientRect();
                 const mouseX = e.clientX - rect.left;
                 const mouseY = e.clientY - rect.top;
-                this.player.aim(mouseX, mouseY);
+                
+                // Calculate camera position
+                const cameraX = this.player.x - this.canvas.width / 2;
+                const cameraY = this.player.y - this.canvas.height / 2;
+                
+                this.player.aim(mouseX, mouseY, cameraX, cameraY);
             }
         });
 
@@ -35,7 +40,12 @@ class Game {
                 const rect = this.canvas.getBoundingClientRect();
                 const mouseX = e.clientX - rect.left;
                 const mouseY = e.clientY - rect.top;
-                const projectile = this.player.shoot(mouseX, mouseY);
+                
+                // Calculate camera position
+                const cameraX = this.player.x - this.canvas.width / 2;
+                const cameraY = this.player.y - this.canvas.height / 2;
+                
+                const projectile = this.player.shoot(mouseX, mouseY, cameraX, cameraY);
                 if (projectile) {
                     this.projectiles.push(projectile);
                 }
