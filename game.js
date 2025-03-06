@@ -4,11 +4,14 @@ const ctx = canvas.getContext('2d');
 // Game constants
 const GRAVITY = 0.5;
 const JUMP_FORCE = -12;
-const OBSTACLE_SPEED = 5;
+const BASE_OBSTACLE_SPEED = 5;
 const OBSTACLE_WIDTH = 20;
 const OBSTACLE_HEIGHT = 40;
 const PLAYER_SIZE = 30;
-const SCORE_INTERVAL = 500; // 0.5 seconds in milliseconds
+const BASE_SCORE_INTERVAL = 500; // 0.5 seconds in milliseconds
+const SPEED_RAMP_INTERVAL = 250; // 0.25 seconds in milliseconds
+const MAX_SPEED_MULTIPLIER = 5;
+const TIME_TO_MAX_SPEED = 120000; // 2 minutes in milliseconds
 
 // Image loading
 const playerImage = new Image();
@@ -30,6 +33,8 @@ let score = 0;
 let gameOver = false;
 let lastScoreTime = 0;
 let lastObstacleTime = 0;
+let gameStartTime = 0;
+let currentSpeedMultiplier = 1;
 
 // Event listeners
 document.addEventListener('keydown', (event) => {
@@ -53,6 +58,8 @@ function resetGame() {
     gameOver = false;
     lastScoreTime = 0;
     lastObstacleTime = 0;
+    gameStartTime = Date.now();
+    currentSpeedMultiplier = 1;
 }
 
 function createObstacle() {
@@ -64,8 +71,17 @@ function createObstacle() {
     });
 }
 
+function updateSpeedMultiplier() {
+    const gameTime = Date.now() - gameStartTime;
+    currentSpeedMultiplier = 1 + (gameTime / TIME_TO_MAX_SPEED) * (MAX_SPEED_MULTIPLIER - 1);
+    currentSpeedMultiplier = Math.min(currentSpeedMultiplier, MAX_SPEED_MULTIPLIER);
+}
+
 function update() {
     if (gameOver) return;
+
+    // Update speed multiplier
+    updateSpeedMultiplier();
 
     // Update player
     player.velocityY += GRAVITY;
@@ -78,22 +94,26 @@ function update() {
         player.isJumping = false;
     }
 
-    // Update time-based score
+    // Update time-based score (scaled with speed)
     const currentTime = Date.now();
-    if (currentTime - lastScoreTime >= SCORE_INTERVAL) {
+    const scaledScoreInterval = BASE_SCORE_INTERVAL / currentSpeedMultiplier;
+    if (currentTime - lastScoreTime >= scaledScoreInterval) {
         score++;
         lastScoreTime = currentTime;
     }
 
-    // Create obstacles at random intervals
-    if (currentTime - lastObstacleTime >= Math.random() * Math.random() * 1000 + 750) { // Random between 1000-3000ms
+    // Create obstacles at random intervals (scaled with speed)
+    const baseInterval = 2250; // Base random interval (750-3000ms)
+    const scaledInterval = baseInterval / currentSpeedMultiplier;
+    if (currentTime - lastObstacleTime >= Math.random() * scaledInterval + (750 / currentSpeedMultiplier)) {
         createObstacle();
         lastObstacleTime = currentTime;
     }
 
-    // Update obstacles
+    // Update obstacles with current speed
+    const currentObstacleSpeed = BASE_OBSTACLE_SPEED * currentSpeedMultiplier;
     for (let i = obstacles.length - 1; i >= 0; i--) {
-        obstacles[i].x -= OBSTACLE_SPEED;
+        obstacles[i].x -= currentObstacleSpeed;
         if (obstacles[i].x + obstacles[i].width < 0) {
             obstacles.splice(i, 1);
         }
