@@ -180,27 +180,39 @@ class Renderer {
     }
 
     renderPlayer(player) {
-        // Draw player sprite
-        player.render(this.ctx);
+        const ctx = this.ctx;
         
-        // Draw health bar
-        this.ctx.fillStyle = '#f00';
-        this.ctx.fillRect(player.x, player.y - 10, player.width, 5);
-        this.ctx.fillStyle = '#0f0';
-        this.ctx.fillRect(player.x, player.y - 10, player.width * (player.health / 100), 5);
+        // Save context for rotation
+        ctx.save();
+        
+        // Translate to player position (adjusted for camera)
+        const screenX = player.x - this.cameraX;
+        const screenY = player.y - this.cameraY;
+        ctx.translate(screenX + player.width / 2, screenY + player.height / 2);
+        
+        // Rotate context
+        ctx.rotate(player.angle);
+        
+        // Draw player sprite/rectangle
+        ctx.translate(-player.width / 2, -player.height / 2);
+        player.sprite.render(ctx, 0, 0);
+        
+        // Draw aim line
+        ctx.beginPath();
+        ctx.moveTo(player.width / 2, player.height / 2);
+        ctx.lineTo(player.width / 2 + player.aimLineLength, player.height / 2);
+        ctx.strokeStyle = '#fff';
+        ctx.stroke();
+        
+        ctx.restore();
 
-        // Draw aiming line
-        this.ctx.beginPath();
-        this.ctx.strokeStyle = '#00f';
-        this.ctx.lineWidth = 2;
-        const centerX = player.x + player.width / 2;
-        const centerY = player.y + player.height / 2;
-        this.ctx.moveTo(centerX, centerY);
-        this.ctx.lineTo(
-            centerX + Math.cos(player.angle) * player.aimLineLength,
-            centerY + Math.sin(player.angle) * player.aimLineLength
-        );
-        this.ctx.stroke();
+        // Draw immunity flash if player is immune
+        if (player.isImmune && player.immunityFlashAlpha > 0) {
+            ctx.save();
+            ctx.fillStyle = `rgba(255, 255, 255, ${player.immunityFlashAlpha})`;
+            ctx.fillRect(screenX, screenY, player.width, player.height);
+            ctx.restore();
+        }
     }
 
     renderEnemies(enemies, cameraX, cameraY) {
@@ -240,5 +252,35 @@ class Renderer {
                object.x <= cameraX + this.canvas.width &&
                object.y >= cameraY &&
                object.y <= cameraY + this.canvas.height;
+    }
+
+    renderHealthBoxes(player) {
+        const ctx = this.ctx;
+        const boxSize = 30;
+        const margin = 10;
+        const spacing = 5;
+        const startX = this.canvas.width - (boxSize + margin);
+        const startY = this.canvas.height - (boxSize + margin);
+
+        for (let i = 0; i < player.maxHealth; i++) {
+            ctx.strokeStyle = '#f00';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(
+                startX - (i * (boxSize + spacing)),
+                startY,
+                boxSize,
+                boxSize
+            );
+
+            if (i < player.health) {
+                ctx.fillStyle = '#f00';
+                ctx.fillRect(
+                    startX - (i * (boxSize + spacing)),
+                    startY,
+                    boxSize,
+                    boxSize
+                );
+            }
+        }
     }
 } 
