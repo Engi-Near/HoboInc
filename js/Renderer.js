@@ -297,4 +297,34 @@ class Renderer {
             }
         }
     }
+
+    renderUI(gameState) {
+        // Set font properties
+        this.ctx.font = '20px Arial';
+        this.ctx.fillStyle = '#fff';
+        this.ctx.textAlign = 'left';
+
+        // Render score
+        this.ctx.fillText(`Score: ${gameState.score}`, 10, 30);
+
+        // Render coin progress bar
+        const barWidth = 200;
+        const barHeight = 20;
+        const barX = this.canvas.width - barWidth - 10;
+        const barY = 10;
+
+        // Draw background
+        this.ctx.fillStyle = '#333';
+        this.ctx.fillRect(barX, barY, barWidth, barHeight);
+
+        // Draw progress
+        this.ctx.fillStyle = '#ffd700';
+        const progress = gameState.getCoinDisplay();
+        this.ctx.fillRect(barX, barY, barWidth * progress, barHeight);
+
+        // Draw border
+        this.ctx.strokeStyle = '#fff';
+        this.ctx.lineWidth = 2;
+        this.ctx.strokeRect(barX, barY, barWidth, barHeight);
+    }
 } 

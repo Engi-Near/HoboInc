@@ -15,6 +15,7 @@ class GameState {
         this.score = 0;
         this.coins = 0;
         this.upgrades = 0;
+        this.coinCounterDisplay = 0; // Visual counter for smooth display
     }
 
     startGame(mode) {
@@ -23,6 +24,7 @@ class GameState {
         this.score = 0;
         this.coins = 0;
         this.upgrades = 0;
+        this.coinCounterDisplay = 0;
     }
 
     updateScore(points) {
@@ -44,11 +46,18 @@ class GameState {
     }
 
     upgrade() {
-        this.upgrades++;
-        this.currentState = GameState.PLAYING;
+        if (this.coins >= this.getUpgradeCost()) {
+            this.upgrades++;
+            this.currentState = GameState.PLAYING;
+        }
     }
 
     playerDied() {
         this.currentState = GameState.GAME_OVER;
+    }
+
+    getCoinDisplay() {
+        const upgradeCost = this.getUpgradeCost();
+        return (this.coins % upgradeCost) / upgradeCost; // Returns progress from 0 to 1
     }
 } 
