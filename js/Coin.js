@@ -7,22 +7,39 @@ class Coin extends GameObject {
     }
 
     update(player) {
-        // Calculate distance to player
-        const dx = player.x - this.x;
-        const dy = player.y - this.y;
+        // Calculate distance from centers
+        const playerCenterX = player.x + player.width/2;
+        const playerCenterY = player.y + player.height/2;
+        const coinCenterX = this.x + this.width/2;
+        const coinCenterY = this.y + this.height/2;
+        
+        const dx = playerCenterX - coinCenterX;
+        const dy = playerCenterY - coinCenterY;
         const distance = Math.sqrt(dx * dx + dy * dy);
 
         // If within pickup range, move towards player
-        if (distance <= this.pickupRange) {
-            // Normalize direction and apply speed
-            const normalizer = distance > 0 ? 1 / distance : 0;
-            this.velocityX = dx * normalizer * this.magnetSpeed;
-            this.velocityY = dy * normalizer * this.magnetSpeed;
+        if (distance <= this.pickupRange && distance > 0) {
+            // Calculate movement this frame
+            const moveX = (dx / distance) * this.magnetSpeed;
+            const moveY = (dy / distance) * this.magnetSpeed;
 
-            // Update position
-            this.x += this.velocityX;
-            this.y += this.velocityY;
+            // Update position directly
+            this.x += moveX;
+            this.y += moveY;
         }
+    }
+
+    isColliding(player) {
+        const playerCenterX = player.x + player.width/2;
+        const playerCenterY = player.y + player.height/2;
+        const coinCenterX = this.x + this.width/2;
+        const coinCenterY = this.y + this.height/2;
+        
+        const dx = playerCenterX - coinCenterX;
+        const dy = playerCenterY - coinCenterY;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        
+        return distance < (player.width/2 + this.width/2);
     }
 
     render(ctx) {
