@@ -332,10 +332,5 @@ class Renderer {
         this.ctx.strokeStyle = '#fff';
         this.ctx.lineWidth = 2;
         this.ctx.strokeRect(barX, barY, barWidth, barHeight);
-
-        // Draw coin count and upgrade cost
-        this.ctx.fillStyle = '#fff';
-        this.ctx.textAlign = 'right';
-        this.ctx.fillText(`${currentCoins}/${upgradeCost} coins`, barX + barWidth - 5, barY + barHeight + 15);
     }
 } 
