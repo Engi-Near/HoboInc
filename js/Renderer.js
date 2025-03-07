@@ -133,6 +133,13 @@ class Renderer {
 
         // Render UI elements (these are in screen space)
         this.renderHealthBoxes(player);
+        
+        // Render weapon name above health boxes
+        this.ctx.font = '20px Arial';
+        this.ctx.fillStyle = '#fff';
+        this.ctx.textAlign = 'right';
+        const weaponY = this.canvas.height - 45 - 10; // 45 pixels above health boxes (30px box + 15px margin)
+        this.ctx.fillText(player.currentWeapon.name, this.canvas.width - 10, weaponY);
     }
 
     worldToScreen(x, y) {
@@ -290,14 +297,36 @@ class Renderer {
         const barX = this.canvas.width - barWidth - 10;
         const barY = 10;
 
-        // Draw background
-        this.ctx.fillStyle = '#333';
+        // Draw background with slight transparency
+        this.ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
         this.ctx.fillRect(barX, barY, barWidth, barHeight);
 
-        // Draw progress
-        this.ctx.fillStyle = '#ffd700';
-        const progress = gameState.getCoinDisplay();
-        this.ctx.fillRect(barX, barY, barWidth * progress, barHeight);
+        // Calculate progress
+        const upgradeCost = gameState.getUpgradeCost();
+        const currentCoins = gameState.coins % upgradeCost;
+        const progress = currentCoins / upgradeCost;
+
+        // Draw progress bar with gradient
+        if (progress > 0) {
+            const gradient = this.ctx.createLinearGradient(barX, 0, barX + barWidth, 0);
+            gradient.addColorStop(0, '#ffd700');    // Gold
+            gradient.addColorStop(0.5, '#fff1aa');  // Light gold
+            gradient.addColorStop(1, '#ffd700');    // Gold
+            
+            this.ctx.fillStyle = gradient;
+            this.ctx.fillRect(barX, barY, barWidth * progress, barHeight);
+        }
+
+        // Draw segments
+        this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+        this.ctx.lineWidth = 1;
+        for (let i = 1; i < upgradeCost; i++) {
+            const segX = barX + (barWidth * i / upgradeCost);
+            this.ctx.beginPath();
+            this.ctx.moveTo(segX, barY);
+            this.ctx.lineTo(segX, barY + barHeight);
+            this.ctx.stroke();
+        }
 
         // Draw border
         this.ctx.strokeStyle = '#fff';
@@ -307,6 +336,6 @@ class Renderer {
         // Draw coin count and upgrade cost
         this.ctx.fillStyle = '#fff';
         this.ctx.textAlign = 'right';
-        this.ctx.fillText(`${gameState.coins}/${gameState.getUpgradeCost()} coins`, barX + barWidth - 5, barY + barHeight + 15);
+        this.ctx.fillText(`${currentCoins}/${upgradeCost} coins`, barX + barWidth - 5, barY + barHeight + 15);
     }
 } 
