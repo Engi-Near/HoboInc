@@ -1,39 +1,39 @@
 class Player extends GameObject {
     constructor(x, y) {
         super(x, y, 32, 32, 5);
-        this.maxHealth = 3;
-        this.health = this.maxHealth;
-        this.isImmune = false;
-        this.immunityDuration = 2000; // 2 seconds
-        this.immunityEndTime = 0;
-        this.lastHealthGain = Date.now();
-        this.healthGainInterval = 90000; // 90 seconds
-        this.immunityFlashAlpha = 0;
-        
+        this.sprite = new Sprite(this.width, this.height, '#0f0');
         this.angle = 0;
+        this.health = 3;
+        this.maxHealth = 3;
+        this.lastDamageTime = 0;
+        this.immunityDuration = 2000; // 2 seconds
+        this.lastHealthGainTime = 0;
+        this.healthGainInterval = 90000; // 90 seconds
+        
+        // Movement
         this.movementKeys = {
             up: false,
             down: false,
             left: false,
             right: false
         };
-        this.aimLineLength = 50; // Length of the aiming line
-        this.sprite = new Sprite(this.width, this.height, '#00f'); // Blue color for player
-        this.pickupRange = 100; // Range for coin pickup
 
-        // Initialize weapons
-        this.weapons = {
-            pistol: new Weapon('pistol'),
-            shotgun: new Weapon('shotgun'),
-            machinegun: new Weapon('machinegun')
-        };
-        this.currentWeapon = this.weapons.pistol; // Start with pistol
+        // Weapon system
+        this.currentWeapon = new Weapon('pistol'); // Start with pistol
     }
 
-    // Add method to switch weapons
-    switchWeapon(weaponType) {
-        if (this.weapons[weaponType]) {
-            this.currentWeapon = this.weapons[weaponType];
+    switchWeapon(type) {
+        const validWeapons = [
+            'pistol',
+            'shotgun',
+            'machinegun',
+            'upgradedshotgun',
+            'rifle',
+            'supershotgun'
+        ];
+
+        if (validWeapons.includes(type)) {
+            this.currentWeapon = new Weapon(type);
         }
     }
 
@@ -66,28 +66,6 @@ class Player extends GameObject {
     }
 
     update(map) {
-        // Update immunity status
-        if (this.isImmune) {
-            const now = Date.now();
-            if (now >= this.immunityEndTime) {
-                this.isImmune = false;
-            } else {
-                // Calculate flash alpha based on time
-                const immunityProgress = (now - (this.immunityEndTime - this.immunityDuration)) / this.immunityDuration;
-                const flashCycle = (immunityProgress * 2) % 1; // Complete two cycles during immunity
-                this.immunityFlashAlpha = Math.sin(flashCycle * Math.PI) * 0.5; // Sine wave between 0 and 0.5
-            }
-        }
-
-        // Check for health gain
-        const now = Date.now();
-        if (now - this.lastHealthGain >= this.healthGainInterval) {
-            if (this.health < this.maxHealth) {
-                this.health++;
-            }
-            this.lastHealthGain = now;
-        }
-
         // Regular movement updates
         const prevX = this.x;
         const prevY = this.y;
@@ -128,13 +106,14 @@ class Player extends GameObject {
     }
 
     shoot() {
-        const projectiles = this.currentWeapon.shoot(
-            this.x + this.width / 2,
-            this.y + this.height / 2,
-            this.angle
-        );
-        
-        return projectiles;
+        if (this.currentWeapon) {
+            return this.currentWeapon.shoot(
+                this.x + this.width / 2,
+                this.y + this.height / 2,
+                this.angle
+            );
+        }
+        return [];
     }
 
     takeDamage(amount) {
