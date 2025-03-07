@@ -27,8 +27,7 @@ class Renderer {
             case GameState.UPGRADE:
                 if (map && player) {
                     this.renderGame(map, player, enemies, projectiles, coins);
-                    this.renderScore(gameState.score);
-                    this.renderUpgradeBar(gameState.coins, gameState.upgradeCost);
+                    this.renderUI(gameState);
                     if (gameState.currentState === GameState.UPGRADE) {
                         this.renderUpgradePrompt();
                     }
@@ -96,33 +95,11 @@ class Renderer {
     }
 
     renderScore(score) {
-        this.ctx.fillStyle = '#fff';
-        this.ctx.font = '24px ' + this.font;
-        this.ctx.textAlign = 'left';
-        this.ctx.fillText(`Score: ${score}`, 20, 30);
+        // This method is now unused - functionality moved to renderUI
     }
 
     renderUpgradeBar(coins, upgradeCost) {
-        const barWidth = 200;
-        const barHeight = 20;
-        const x = this.canvas.width / 2 - barWidth / 2;
-        const y = 20;
-
-        // Draw gold border
-        this.ctx.strokeStyle = '#ffd700';
-        this.ctx.lineWidth = 2;
-        this.ctx.strokeRect(x, y, barWidth, barHeight);
-
-        // Draw fill
-        const fillWidth = (coins / upgradeCost) * barWidth;
-        this.ctx.fillStyle = '#ffd700';
-        this.ctx.fillRect(x, y, fillWidth, barHeight);
-
-        // Draw text
-        this.ctx.fillStyle = '#000';
-        this.ctx.font = '14px ' + this.font;
-        this.ctx.textAlign = 'center';
-        this.ctx.fillText(`${coins}/${upgradeCost}`, this.canvas.width / 2, y + 15);
+        // This method is now unused - functionality moved to renderUI
     }
 
     renderUpgradePrompt() {
@@ -326,5 +303,10 @@ class Renderer {
         this.ctx.strokeStyle = '#fff';
         this.ctx.lineWidth = 2;
         this.ctx.strokeRect(barX, barY, barWidth, barHeight);
+
+        // Draw coin count and upgrade cost
+        this.ctx.fillStyle = '#fff';
+        this.ctx.textAlign = 'right';
+        this.ctx.fillText(`${gameState.coins}/${gameState.getUpgradeCost()} coins`, barX + barWidth - 5, barY + barHeight + 15);
     }
 } 
