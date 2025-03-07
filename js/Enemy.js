@@ -25,6 +25,23 @@ class Enemy extends GameObject {
                 this.lastShot = 0;
                 this.fireRate = 1000; // 1 second
                 break;
+            case 'fast':
+                this.health = baseHealth * 0.5;
+                this.speed = baseSpeed * 2;
+                this.sprite = new Sprite(this.width, this.height, '#ff0');
+                break;
+            case 'shotgunner':
+                this.health = baseHealth;
+                this.speed = baseSpeed * 0.75;
+                this.sprite = new Sprite(this.width, this.height, '#f0f');
+                this.lastShot = 0;
+                this.fireRate = 5000; // 5 seconds
+                break;
+            case 'supertank':
+                this.health = baseHealth * 100;
+                this.speed = baseSpeed * 0.5;
+                this.sprite = new Sprite(this.width, this.height, '#400');
+                break;
             default:
                 this.health = baseHealth;
                 this.speed = baseSpeed;
@@ -37,6 +54,9 @@ class Enemy extends GameObject {
         switch(this.type) {
             case 'tank': return baseHealth * 3;
             case 'ranged': return baseHealth * 0.75;
+            case 'fast': return baseHealth * 0.5;
+            case 'shotgunner': return baseHealth;
+            case 'supertank': return baseHealth * 100;
             default: return baseHealth;
         }
     }
@@ -93,7 +113,7 @@ class Enemy extends GameObject {
     }
 
     shootProjectile(playerX, playerY) {
-        if (this.type !== 'ranged') return null;
+        if (this.type !== 'ranged' && this.type !== 'shotgunner') return null;
         
         const now = Date.now();
         if (now - this.lastShot >= this.fireRate) {
@@ -103,20 +123,39 @@ class Enemy extends GameObject {
             const dy = playerY - this.y;
             const angle = Math.atan2(dy, dx);
             
-            const projectile = new Projectile(
-                this.x + this.width / 2,
-                this.y + this.height / 2,
-                8,
-                8,
-                8,
-                10, // damage
-                1, // penetration
-                0  // no knockback
-            );
-            
-            projectile.setDirection(angle);
-            return projectile;
+            if (this.type === 'shotgunner') {
+                // Create array for multiple projectiles
+                const projectiles = [];
+                
+                // Center shot
+                projectiles.push(this.createProjectile(angle));
+                
+                // Side shots at ±10 degrees
+                projectiles.push(this.createProjectile(angle + Math.PI / 18)); // +10 degrees
+                projectiles.push(this.createProjectile(angle - Math.PI / 18)); // -10 degrees
+                
+                return projectiles;
+            } else {
+                // Single shot for ranged enemy
+                return this.createProjectile(angle);
+            }
         }
         return null;
+    }
+
+    createProjectile(angle) {
+        const projectile = new Projectile(
+            this.x + this.width / 2,
+            this.y + this.height / 2,
+            8,
+            8,
+            8,
+            10, // damage
+            1,  // penetration
+            0   // no knockback
+        );
+        
+        projectile.setDirection(angle);
+        return projectile;
     }
 } 

@@ -1,63 +1,115 @@
 class Weapon {
     constructor(type) {
         this.type = type;
-        this.lastShot = 0;
         
         // Set weapon properties based on type
         switch(type) {
             case 'pistol':
-                this.damage = 20;
-                this.fireRate = 250; // milliseconds
+                this.damage = 25;
+                this.fireRate = 250; // 4 shots per second
+                this.projectileSpeed = 12;
+                this.penetration = 1;
+                this.lastShot = 0;
                 break;
             case 'shotgun':
                 this.damage = 15;
-                this.fireRate = 750; // milliseconds
-                this.spreadAngle = 10 * (Math.PI / 180); // 10 degrees in radians
+                this.fireRate = 750; // 1.33 shots per second
+                this.projectileSpeed = 15;
+                this.penetration = 1;
+                this.lastShot = 0;
                 break;
             case 'machinegun':
-                this.damage = 10;
-                this.fireRate = 50; // milliseconds between each bullet in burst
+                this.damage = 15;
+                this.fireRate = 100; // 10 shots per second
+                this.projectileSpeed = 20;
+                this.penetration = 1;
+                this.lastShot = 0;
+                break;
+            case 'upgradedshotgun':
+                this.damage = 20;
+                this.fireRate = 1000; // 1 shot per second
+                this.projectileSpeed = 15;
+                this.penetration = 2;
+                this.lastShot = 0;
+                this.burstCount = 2;
+                break;
+            case 'rifle':
+                this.damage = 50;
+                this.fireRate = 1000; // 1 shot per second
+                this.projectileSpeed = 25;
+                this.penetration = 5;
+                this.lastShot = 0;
+                break;
+            case 'supershotgun':
+                this.damage = 25;
+                this.fireRate = 1250; // 0.8 shots per second
+                this.projectileSpeed = 15;
+                this.penetration = 2;
+                this.lastShot = 0;
                 this.burstCount = 3;
-                this.burstDelay = 50; // milliseconds
                 break;
         }
     }
 
     canShoot() {
-        const now = Date.now();
-        return now - this.lastShot >= this.fireRate;
+        return Date.now() - this.lastShot >= this.fireRate;
     }
 
     shoot(x, y, angle) {
-        if (!this.canShoot()) return null;
-        
+        if (!this.canShoot()) return [];
+
         this.lastShot = Date.now();
-        let projectiles = [];
+        const projectiles = [];
 
         switch(this.type) {
             case 'pistol':
                 projectiles.push(this.createProjectile(x, y, angle));
                 break;
-                
+            
             case 'shotgun':
-                // Center projectile
+                // Center shot
                 projectiles.push(this.createProjectile(x, y, angle));
-                // Left projectile
-                projectiles.push(this.createProjectile(x, y, angle - this.spreadAngle));
-                // Right projectile
-                projectiles.push(this.createProjectile(x, y, angle + this.spreadAngle));
+                // Side shots at ±15 degrees
+                projectiles.push(this.createProjectile(x, y, angle + Math.PI / 12));
+                projectiles.push(this.createProjectile(x, y, angle - Math.PI / 12));
                 break;
-                
+            
             case 'machinegun':
-                // Schedule burst fire
-                projectiles.push(this.createProjectile(x, y, angle));
-                for(let i = 1; i < this.burstCount; i++) {
+                // Single fast shot with slight spread
+                const spread = (Math.random() - 0.5) * Math.PI / 18; // ±5 degrees
+                projectiles.push(this.createProjectile(x, y, angle + spread));
+                break;
+
+            case 'upgradedshotgun':
+                // Two bursts of three shots each
+                for (let i = 0; i < this.burstCount; i++) {
                     setTimeout(() => {
-                        const newProjectile = this.createProjectile(x, y, angle);
-                        if (newProjectile) {
-                            window.game.projectiles.push(newProjectile);
-                        }
-                    }, i * this.burstDelay);
+                        // Center shot
+                        projectiles.push(this.createProjectile(x, y, angle));
+                        // Side shots at ±10 degrees
+                        projectiles.push(this.createProjectile(x, y, angle + Math.PI / 18));
+                        projectiles.push(this.createProjectile(x, y, angle - Math.PI / 18));
+                    }, i * 100); // 100ms between bursts
+                }
+                break;
+
+            case 'rifle':
+                // Single high-damage, high-penetration shot
+                projectiles.push(this.createProjectile(x, y, angle));
+                break;
+
+            case 'supershotgun':
+                // Three bursts of five shots each
+                for (let i = 0; i < this.burstCount; i++) {
+                    setTimeout(() => {
+                        // Center shot
+                        projectiles.push(this.createProjectile(x, y, angle));
+                        // Side shots at ±10 and ±20 degrees
+                        projectiles.push(this.createProjectile(x, y, angle + Math.PI / 18));
+                        projectiles.push(this.createProjectile(x, y, angle - Math.PI / 18));
+                        projectiles.push(this.createProjectile(x, y, angle + Math.PI / 9));
+                        projectiles.push(this.createProjectile(x, y, angle - Math.PI / 9));
+                    }, i * 100); // 100ms between bursts
                 }
                 break;
         }
@@ -69,12 +121,12 @@ class Weapon {
         const projectile = new Projectile(
             x,
             y,
-            8,
-            8,
-            10,
+            8,  // width
+            8,  // height
+            this.projectileSpeed,
             this.damage,
-            3, // penetration
-            100 // knockback
+            this.penetration,
+            5  // knockback
         );
         projectile.setDirection(angle);
         projectile.isFromPlayer = true;

@@ -152,6 +152,9 @@ class Game {
                     case '1': this.player.switchWeapon('pistol'); break;
                     case '2': this.player.switchWeapon('shotgun'); break;
                     case '3': this.player.switchWeapon('machinegun'); break;
+                    case '4': this.player.switchWeapon('upgradedshotgun'); break;
+                    case '5': this.player.switchWeapon('rifle'); break;
+                    case '6': this.player.switchWeapon('supershotgun'); break;
                 }
             }
         });
