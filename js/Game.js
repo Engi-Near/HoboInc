@@ -15,7 +15,7 @@ class Game {
         this.scorePerKill = 100;
         this.gameStartTime = 0;
 
-        // Wave definitions
+        // Wave definitions for normal mode
         this.normalModeWaves = [
             {
                 time: 0,
@@ -36,6 +36,59 @@ class Game {
                     { type: 'basic', count: 2 },
                     { type: 'tank', count: 2 },
                     { type: 'ranged', count: 1 }
+                ]
+            }
+        ];
+
+        // Wave definitions for endless mode
+        this.endlessModeWaves = [
+            {
+                time: 0,
+                enemies: [
+                    { type: 'basic', count: 5 }
+                ]
+            },
+            {
+                time: 30,
+                enemies: [
+                    { type: 'basic', count: 7 }
+                ]
+            },
+            {
+                time: 60,
+                enemies: [
+                    { type: 'basic', count: 6 },
+                    { type: 'tank', count: 1 }
+                ]
+            },
+            {
+                time: 90,
+                enemies: [
+                    { type: 'basic', count: 8 }
+                ]
+            },
+            {
+                time: 120,
+                enemies: [
+                    { type: 'basic', count: 7 },
+                    { type: 'tank', count: 2 },
+                    { type: 'ranged', count: 1 }
+                ]
+            },
+            {
+                time: 150,
+                enemies: [
+                    { type: 'basic', count: 8 },
+                    { type: 'tank', count: 3 },
+                    { type: 'ranged', count: 2 }
+                ]
+            },
+            {
+                time: 200,
+                enemies: [
+                    { type: 'basic', count: 10 },
+                    { type: 'tank', count: 5 },
+                    { type: 'ranged', count: 3 }
                 ]
             }
         ];
@@ -155,13 +208,48 @@ class Game {
         
         const gameTime = (Date.now() - this.gameStartTime) / 1000; // Convert to seconds
         let currentWave = null;
+        
+        // Get the appropriate wave table based on game mode
+        const waveTable = this.gameState.gameMode === 'endless' ? this.endlessModeWaves : this.normalModeWaves;
 
         // Find the latest wave for the current time
-        for (const wave of this.normalModeWaves) {
+        for (const wave of waveTable) {
             if (gameTime >= wave.time) {
-                currentWave = wave;
+                currentWave = {...wave};
             } else {
                 break;
+            }
+        }
+
+        // For endless mode, add scaling enemies after 200 seconds
+        if (this.gameState.gameMode === 'endless' && gameTime > 200) {
+            const extraWaves = Math.floor((gameTime - 200) / 30); // How many 30-second intervals past 200s
+            if (extraWaves > 0) {
+                // Add scaling enemies
+                currentWave.enemies = currentWave.enemies.map(enemy => ({...enemy})); // Clone the enemies array
+                
+                // Find or create enemy types
+                let basicEnemy = currentWave.enemies.find(e => e.type === 'basic');
+                let tankEnemy = currentWave.enemies.find(e => e.type === 'tank');
+                let rangedEnemy = currentWave.enemies.find(e => e.type === 'ranged');
+
+                if (!basicEnemy) {
+                    basicEnemy = { type: 'basic', count: 0 };
+                    currentWave.enemies.push(basicEnemy);
+                }
+                if (!tankEnemy) {
+                    tankEnemy = { type: 'tank', count: 0 };
+                    currentWave.enemies.push(tankEnemy);
+                }
+                if (!rangedEnemy) {
+                    rangedEnemy = { type: 'ranged', count: 0 };
+                    currentWave.enemies.push(rangedEnemy);
+                }
+
+                // Add scaling enemies for each 30-second interval
+                basicEnemy.count += extraWaves * 2;  // +2 basic per interval
+                tankEnemy.count += extraWaves;       // +1 tank per interval
+                rangedEnemy.count += extraWaves;     // +1 ranged per interval
             }
         }
 
