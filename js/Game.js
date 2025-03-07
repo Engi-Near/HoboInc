@@ -13,6 +13,32 @@ class Game {
         this.lastEnemySpawn = 0;
         this.enemySpawnInterval = 2000; // 2 seconds
         this.scorePerKill = 100;
+        this.gameStartTime = 0;
+
+        // Wave definitions
+        this.normalModeWaves = [
+            {
+                time: 0,
+                enemies: [
+                    { type: 'basic', count: 5 }
+                ]
+            },
+            {
+                time: 60,
+                enemies: [
+                    { type: 'basic', count: 4 },
+                    { type: 'tank', count: 1 }
+                ]
+            },
+            {
+                time: 120,
+                enemies: [
+                    { type: 'basic', count: 2 },
+                    { type: 'tank', count: 2 },
+                    { type: 'ranged', count: 1 }
+                ]
+            }
+        ];
 
         // Make game instance globally available for weapon system
         window.game = this;
@@ -124,9 +150,72 @@ class Game {
         }
     }
 
+    getCurrentWave() {
+        if (this.gameState.currentState !== GameState.PLAYING) return null;
+        
+        const gameTime = (Date.now() - this.gameStartTime) / 1000; // Convert to seconds
+        let currentWave = null;
+
+        // Find the latest wave for the current time
+        for (const wave of this.normalModeWaves) {
+            if (gameTime >= wave.time) {
+                currentWave = wave;
+            } else {
+                break;
+            }
+        }
+
+        return currentWave;
+    }
+
+    spawnWave() {
+        const wave = this.getCurrentWave();
+        if (!wave) return;
+
+        const now = Date.now();
+        if (now - this.lastEnemySpawn >= this.enemySpawnInterval) {
+            // Calculate map boundaries
+            const mapWidth = this.map.width * this.map.tileSize;
+            const mapHeight = this.map.height * this.map.tileSize;
+            const margin = 64;
+            
+            // Calculate spawn area
+            const spawnWidth = mapWidth - (margin * 2);
+            const spawnHeight = mapHeight - (margin * 2);
+            
+            if (spawnWidth <= 0 || spawnHeight <= 0) {
+                console.warn('Map too small for enemy spawn');
+                return;
+            }
+
+            // Count current enemies by type
+            const currentCounts = {};
+            this.enemies.forEach(enemy => {
+                currentCounts[enemy.type] = (currentCounts[enemy.type] || 0) + 1;
+            });
+
+            // Spawn missing enemies
+            wave.enemies.forEach(enemyType => {
+                const currentCount = currentCounts[enemyType.type] || 0;
+                if (currentCount < enemyType.count) {
+                    // Generate random position within valid spawn area
+                    const x = margin + Math.floor(Math.random() * spawnWidth);
+                    const y = margin + Math.floor(Math.random() * spawnHeight);
+                    
+                    if (x >= 0 && x < mapWidth && y >= 0 && y < mapHeight) {
+                        this.enemies.push(new Enemy(x, y, enemyType.type));
+                    }
+                }
+            });
+
+            this.lastEnemySpawn = now;
+        }
+    }
+
     startGame(mode) {
         this.gameState.startGame(mode);
         this.resetGameState();
+        this.gameStartTime = Date.now();
     }
 
     resetGame() {
@@ -144,42 +233,6 @@ class Game {
         this.projectiles = [];
         this.coins = [];
         this.lastEnemySpawn = 0;
-    }
-
-    spawnEnemy() {
-        const now = Date.now();
-        if (now - this.lastEnemySpawn >= this.enemySpawnInterval) {
-            const enemyTypes = ['basic', 'tank', 'ranged'];
-            const type = enemyTypes[Math.floor(Math.random() * enemyTypes.length)];
-            
-            // Calculate actual map boundaries in pixels
-            const mapWidth = this.map.width * this.map.tileSize;
-            const mapHeight = this.map.height * this.map.tileSize;
-            
-            // Add margin to keep enemies away from edges
-            const margin = 64;
-            
-            // Ensure spawn area is valid
-            const spawnWidth = mapWidth - (margin * 2);
-            const spawnHeight = mapHeight - (margin * 2);
-            
-            if (spawnWidth <= 0 || spawnHeight <= 0) {
-                console.warn('Map too small for enemy spawn');
-                return;
-            }
-
-            // Generate random position within valid spawn area
-            const x = margin + Math.floor(Math.random() * spawnWidth);
-            const y = margin + Math.floor(Math.random() * spawnHeight);
-            
-            // Validate position is within map
-            if (x >= 0 && x < mapWidth && y >= 0 && y < mapHeight) {
-                this.enemies.push(new Enemy(x, y, type));
-                this.lastEnemySpawn = now;
-            } else {
-                console.warn('Invalid enemy spawn position calculated:', x, y);
-            }
-        }
     }
 
     spawnCoin(x, y) {
@@ -222,14 +275,20 @@ class Game {
 
         // Only update game objects if not in upgrade state
         if (this.gameState.currentState === GameState.PLAYING) {
-            // Spawn enemies
-            this.spawnEnemy();
+            // Spawn enemies based on current wave
+            this.spawnWave();
 
             // Update enemies
             this.enemies.forEach(enemy => {
                 enemy.update(this.player, this.enemies, this.map);
                 
-                // Enemy shooting logic removed
+                // Enemy shooting logic
+                const projectile = enemy.shootProjectile(this.player.x, this.player.y);
+                if (projectile) {
+                    projectile.isFromPlayer = false;
+                    projectile.isFriendly = false;
+                    this.projectiles.push(projectile);
+                }
             });
 
             // Update projectiles
