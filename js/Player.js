@@ -18,28 +18,31 @@ class Player extends GameObject {
             right: false
         };
 
-        // Weapon system
-        this.currentWeapon = new Weapon('pistol'); // Start with pistol
+        // Initialize all weapons
+        this.weapons = {
+            pistol: new Weapon('pistol'),
+            shotgun: new Weapon('shotgun'),
+            machinegun: new Weapon('machinegun'),
+            upgradedshotgun: new Weapon('upgradedshotgun'),
+            rifle: new Weapon('rifle'),
+            supershotgun: new Weapon('supershotgun')
+        };
+        
+        // Start with pistol
+        this.currentWeapon = this.weapons.pistol;
     }
 
     switchWeapon(type) {
-        const validWeapons = [
-            'pistol',
-            'shotgun',
-            'machinegun',
-            'upgradedshotgun',
-            'rifle',
-            'supershotgun'
-        ];
-
-        if (validWeapons.includes(type)) {
-            this.currentWeapon = new Weapon(type);
+        if (this.weapons[type]) {
+            console.log('Switching to weapon:', type); // Debug log
+            this.currentWeapon = this.weapons[type];
+        } else {
+            console.log('Invalid weapon type:', type); // Debug log
         }
     }
 
-    move(direction, isMoving) {
-        this.movementKeys[direction] = isMoving;
-        this.updateVelocity();
+    move(direction, isPressed) {
+        this.movementKeys[direction] = isPressed;
     }
 
     updateVelocity() {
@@ -66,13 +69,50 @@ class Player extends GameObject {
     }
 
     update(map) {
+        // Update immunity status
+        if (Date.now() - this.lastDamageTime < this.immunityDuration) {
+            // Calculate flash alpha based on time
+            const immunityProgress = (Date.now() - this.lastDamageTime) / this.immunityDuration;
+            const flashCycle = (immunityProgress * 2) % 1; // Complete two cycles during immunity
+            this.immunityFlashAlpha = Math.sin(flashCycle * Math.PI) * 0.5; // Sine wave between 0 and 0.5
+        } else {
+            this.immunityFlashAlpha = 0;
+        }
+
+        // Check for health gain
+        const now = Date.now();
+        if (now - this.lastHealthGainTime >= this.healthGainInterval) {
+            if (this.health < this.maxHealth) {
+                this.health++;
+            }
+            this.lastHealthGainTime = now;
+        }
+
         // Regular movement updates
         const prevX = this.x;
         const prevY = this.y;
 
+        // Update velocity based on movement keys
+        this.velocityX = 0;
+        this.velocityY = 0;
+
+        if (this.movementKeys.up) this.velocityY -= this.speed;
+        if (this.movementKeys.down) this.velocityY += this.speed;
+        if (this.movementKeys.left) this.velocityX -= this.speed;
+        if (this.movementKeys.right) this.velocityX += this.speed;
+
+        // Normalize diagonal movement
+        if (this.velocityX !== 0 && this.velocityY !== 0) {
+            const normalizer = Math.sqrt(2) / 2;
+            this.velocityX *= normalizer;
+            this.velocityY *= normalizer;
+        }
+
+        // Update position
         this.x += this.velocityX;
         this.y += this.velocityY;
 
+        // Check for wall collisions
         const bounds = this.getBounds();
         const tileX1 = Math.floor(bounds.left / map.tileSize);
         const tileX2 = Math.floor(bounds.right / map.tileSize);
@@ -91,17 +131,9 @@ class Player extends GameObject {
     }
 
     aim(mouseX, mouseY, cameraX, cameraY) {
-        // Convert screen coordinates to world coordinates
-        const worldMouseX = mouseX + cameraX;
-        const worldMouseY = mouseY + cameraY;
-
-        // Calculate angle from player center to mouse position
-        const playerCenterX = this.x + this.width / 2;
-        const playerCenterY = this.y + this.height / 2;
-        
-        const dx = worldMouseX - playerCenterX;
-        const dy = worldMouseY - playerCenterY;
-        
+        // Calculate angle between player and mouse in world coordinates
+        const dx = (mouseX + cameraX) - this.x;
+        const dy = (mouseY + cameraY) - this.y;
         this.angle = Math.atan2(dy, dx);
     }
 
@@ -117,12 +149,12 @@ class Player extends GameObject {
     }
 
     takeDamage(amount) {
-        if (this.isImmune) return false;
-        
-        this.health--;
-        this.isImmune = true;
-        this.immunityEndTime = Date.now() + this.immunityDuration;
-        
-        return this.health <= 0;
+        const now = Date.now();
+        if (now - this.lastDamageTime >= this.immunityDuration) {
+            this.health -= amount;
+            this.lastDamageTime = now;
+            return this.health <= 0;
+        }
+        return false;
     }
 } 
