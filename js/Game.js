@@ -11,7 +11,7 @@ class Game {
         this.projectiles = [];
         this.coins = [];
         this.lastEnemySpawn = 0;
-        this.enemySpawnInterval = 2000; // 2 seconds
+        this.enemySpawnInterval = 10000; // 10 seconds
         this.scorePerKill = 100;
         this.gameStartTime = 0;
 
@@ -170,6 +170,9 @@ class Game {
         // Add space key listener for upgrades
         window.addEventListener('keydown', (e) => {
             if (this.gameState.currentState === GameState.UPGRADE && e.code === 'Space') {
+                // Instead of resetting coins, just decrement by the upgrade cost
+                const upgradeCost = this.gameState.getUpgradeCost();
+                this.gameState.coins -= upgradeCost; // Decrement coins by the cost
                 this.gameState.upgrade();
             }
         });
