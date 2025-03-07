@@ -137,32 +137,35 @@ class Renderer {
 
     renderGame(map, player, enemies, projectiles, coins) {
         // Calculate camera position to keep player centered
-        const cameraX = player.x - this.canvas.width / 2;
-        const cameraY = player.y - this.canvas.height / 2;
+        this.cameraX = player.x - this.canvas.width / 2;
+        this.cameraY = player.y - this.canvas.height / 2;
 
         // Save the current context state
         this.ctx.save();
         
         // Move the context to account for camera position
-        this.ctx.translate(-cameraX, -cameraY);
+        this.ctx.translate(-this.cameraX, -this.cameraY);
 
         // Render map tiles
-        this.renderMap(map, cameraX, cameraY);
+        this.renderMap(map, this.cameraX, this.cameraY);
 
         // Render coins (between map and other objects)
-        this.renderCoins(coins, cameraX, cameraY);
+        this.renderCoins(coins, this.cameraX, this.cameraY);
 
         // Render enemies
-        this.renderEnemies(enemies, cameraX, cameraY);
+        this.renderEnemies(enemies, this.cameraX, this.cameraY);
 
         // Render projectiles
-        this.renderProjectiles(projectiles, cameraX, cameraY);
+        this.renderProjectiles(projectiles, this.cameraX, this.cameraY);
 
         // Render player
         this.renderPlayer(player);
 
         // Restore the context state
         this.ctx.restore();
+
+        // Render UI elements on top
+        this.renderHealthBoxes(player);
     }
 
     renderMap(map, cameraX, cameraY) {
@@ -185,10 +188,9 @@ class Renderer {
         // Save context for rotation
         ctx.save();
         
-        // Translate to player position (adjusted for camera)
-        const screenX = player.x - this.cameraX;
-        const screenY = player.y - this.cameraY;
-        ctx.translate(screenX + player.width / 2, screenY + player.height / 2);
+        // Translate to player position
+        ctx.translate(player.x, player.y);
+        ctx.translate(player.width / 2, player.height / 2);
         
         // Rotate context
         ctx.rotate(player.angle);
@@ -210,7 +212,7 @@ class Renderer {
         if (player.isImmune && player.immunityFlashAlpha > 0) {
             ctx.save();
             ctx.fillStyle = `rgba(255, 255, 255, ${player.immunityFlashAlpha})`;
-            ctx.fillRect(screenX, screenY, player.width, player.height);
+            ctx.fillRect(player.x, player.y, player.width, player.height);
             ctx.restore();
         }
     }
