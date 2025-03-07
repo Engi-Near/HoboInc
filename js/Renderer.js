@@ -140,16 +140,21 @@ class Renderer {
         this.cameraX = Math.floor(player.x - this.canvas.width / 2);
         this.cameraY = Math.floor(player.y - this.canvas.height / 2);
 
-        // Render map tiles (in world space)
-        this.renderMap(map, this.cameraX, this.cameraY);
+        // Clear the entire canvas
+        this.clear();
 
-        // Render game objects in screen space
+        // Draw background
+        this.ctx.fillStyle = '#000';
+        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+
+        // Render all game elements
+        this.renderMap(map, this.cameraX, this.cameraY);
         this.renderCoins(coins);
         this.renderEnemies(enemies);
         this.renderProjectiles(projectiles);
         this.renderPlayer(player);
 
-        // Render UI elements
+        // Render UI elements (these are in screen space)
         this.renderHealthBoxes(player);
     }
 
@@ -170,7 +175,8 @@ class Renderer {
 
         this.ctx.fillStyle = '#666';
         visibleTiles.forEach(tile => {
-            this.ctx.fillRect(tile.x, tile.y, tile.width, tile.height);
+            const pos = this.worldToScreen(tile.x, tile.y);
+            this.ctx.fillRect(pos.x, pos.y, tile.width, tile.height);
         });
     }
 
