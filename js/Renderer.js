@@ -137,35 +137,27 @@ class Renderer {
 
     renderGame(map, player, enemies, projectiles, coins) {
         // Calculate camera position to keep player centered
-        this.cameraX = player.x - this.canvas.width / 2;
-        this.cameraY = player.y - this.canvas.height / 2;
+        this.cameraX = Math.floor(player.x - this.canvas.width / 2);
+        this.cameraY = Math.floor(player.y - this.canvas.height / 2);
 
-        // Save the current context state
-        this.ctx.save();
-        
-        // Move the context to account for camera position
-        this.ctx.translate(-this.cameraX, -this.cameraY);
-
-        // Render map tiles
+        // Render map tiles (in world space)
         this.renderMap(map, this.cameraX, this.cameraY);
 
-        // Render coins (between map and other objects)
-        this.renderCoins(coins, this.cameraX, this.cameraY);
-
-        // Render enemies
-        this.renderEnemies(enemies, this.cameraX, this.cameraY);
-
-        // Render projectiles
-        this.renderProjectiles(projectiles, this.cameraX, this.cameraY);
-
-        // Render player
+        // Render game objects in screen space
+        this.renderCoins(coins);
+        this.renderEnemies(enemies);
+        this.renderProjectiles(projectiles);
         this.renderPlayer(player);
 
-        // Restore the context state
-        this.ctx.restore();
-
-        // Render UI elements on top
+        // Render UI elements
         this.renderHealthBoxes(player);
+    }
+
+    worldToScreen(x, y) {
+        return {
+            x: Math.floor(x - this.cameraX),
+            y: Math.floor(y - this.cameraY)
+        };
     }
 
     renderMap(map, cameraX, cameraY) {
@@ -184,13 +176,13 @@ class Renderer {
 
     renderPlayer(player) {
         const ctx = this.ctx;
+        const pos = this.worldToScreen(player.x, player.y);
         
         // Save context for rotation
         ctx.save();
         
-        // Translate to player position
-        ctx.translate(player.x, player.y);
-        ctx.translate(player.width / 2, player.height / 2);
+        // Move to player position and center
+        ctx.translate(pos.x + player.width / 2, pos.y + player.height / 2);
         
         // Rotate context
         ctx.rotate(player.angle);
@@ -212,39 +204,53 @@ class Renderer {
         if (player.isImmune && player.immunityFlashAlpha > 0) {
             ctx.save();
             ctx.fillStyle = `rgba(255, 255, 255, ${player.immunityFlashAlpha})`;
-            ctx.fillRect(player.x, player.y, player.width, player.height);
+            ctx.fillRect(pos.x, pos.y, player.width, player.height);
             ctx.restore();
         }
     }
 
-    renderEnemies(enemies, cameraX, cameraY) {
+    renderEnemies(enemies) {
         enemies.forEach(enemy => {
-            // Only render enemies within the visible area
-            if (this.isInView(enemy, cameraX, cameraY)) {
+            if (this.isInView(enemy, this.cameraX, this.cameraY)) {
+                const pos = this.worldToScreen(enemy.x, enemy.y);
+                
                 // Draw enemy sprite
-                enemy.render(this.ctx);
+                this.ctx.save();
+                this.ctx.translate(pos.x, pos.y);
+                enemy.sprite.render(this.ctx, 0, 0);
+                this.ctx.restore();
                 
                 // Render enemy health bar
                 this.ctx.fillStyle = '#f00';
-                this.ctx.fillRect(enemy.x, enemy.y - 10, enemy.width, 5);
+                this.ctx.fillRect(pos.x, pos.y - 10, enemy.width, 5);
                 this.ctx.fillStyle = '#0f0';
-                this.ctx.fillRect(enemy.x, enemy.y - 10, enemy.width * (enemy.health / enemy.getHealthByType()), 5);
+                this.ctx.fillRect(pos.x, pos.y - 10, enemy.width * (enemy.health / enemy.getHealthByType()), 5);
             }
         });
     }
 
-    renderProjectiles(projectiles, cameraX, cameraY) {
+    renderProjectiles(projectiles) {
         projectiles.forEach(projectile => {
-            if (this.isInView(projectile, cameraX, cameraY)) {
-                projectile.render(this.ctx);
+            if (this.isInView(projectile, this.cameraX, this.cameraY)) {
+                const pos = this.worldToScreen(projectile.x, projectile.y);
+                
+                this.ctx.save();
+                this.ctx.translate(pos.x, pos.y);
+                projectile.sprite.render(this.ctx, 0, 0);
+                this.ctx.restore();
             }
         });
     }
 
-    renderCoins(coins, cameraX, cameraY) {
+    renderCoins(coins) {
         coins.forEach(coin => {
-            if (this.isInView(coin, cameraX, cameraY)) {
-                coin.render(this.ctx);
+            if (this.isInView(coin, this.cameraX, this.cameraY)) {
+                const pos = this.worldToScreen(coin.x, coin.y);
+                
+                this.ctx.save();
+                this.ctx.translate(pos.x, pos.y);
+                coin.sprite.render(this.ctx, 0, 0);
+                this.ctx.restore();
             }
         });
     }
