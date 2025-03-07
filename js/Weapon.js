@@ -5,6 +5,7 @@ class Weapon {
         // Set weapon properties based on type
         switch(type) {
             case 'pistol':
+                this.name = 'Pistol';
                 this.damage = 25;
                 this.fireRate = 250; // 4 shots per second
                 this.projectileSpeed = 12;
@@ -12,6 +13,7 @@ class Weapon {
                 this.lastShot = 0;
                 break;
             case 'shotgun':
+                this.name = 'Shotgun';
                 this.damage = 15;
                 this.fireRate = 750; // 1.33 shots per second
                 this.projectileSpeed = 15;
@@ -19,13 +21,17 @@ class Weapon {
                 this.lastShot = 0;
                 break;
             case 'machinegun':
+                this.name = 'Machine Gun';
                 this.damage = 15;
                 this.fireRate = 100; // 10 shots per second
                 this.projectileSpeed = 20;
                 this.penetration = 1;
                 this.lastShot = 0;
+                this.burstCount = 5;
+                this.burstDelay = 20;
                 break;
             case 'upgradedshotgun':
+                this.name = 'Heavy Shotgun';
                 this.damage = 20;
                 this.fireRate = 1000; // 1 shot per second
                 this.projectileSpeed = 15;
@@ -35,6 +41,7 @@ class Weapon {
                 this.burstDelay = 100; // 100ms between bursts
                 break;
             case 'rifle':
+                this.name = 'Rifle';
                 this.damage = 50;
                 this.fireRate = 1000; // 1 shot per second
                 this.projectileSpeed = 25;
@@ -42,6 +49,7 @@ class Weapon {
                 this.lastShot = 0;
                 break;
             case 'supershotgun':
+                this.name = 'Super Shotgun';
                 this.damage = 25;
                 this.fireRate = 1250; // 0.8 shots per second
                 this.projectileSpeed = 15;
