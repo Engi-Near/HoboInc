@@ -1,31 +1,27 @@
 class Coin extends GameObject {
     constructor(x, y) {
-        super(x, y, 8, 8, 0);
-        this.sprite = new Sprite(this.width, this.height, '#ffd700'); // Gold color
-        this.isMovingToPlayer = false;
+        super(x, y, 16, 16, 0);
+        this.sprite = new Sprite(this.width, this.height, '#ff0'); // Yellow color
+        this.pickupRange = 100; // Range at which coins start moving towards player
+        this.magnetSpeed = 10; // 2x player speed (player speed is 5)
     }
 
     update(player) {
-        if (!this.isMovingToPlayer) {
-            const dx = player.x - this.x;
-            const dy = player.y - this.y;
-            const distance = Math.sqrt(dx * dx + dy * dy);
-            
-            if (distance < player.pickupRange) {
-                this.isMovingToPlayer = true;
-            }
-        }
+        // Calculate distance to player
+        const dx = player.x - this.x;
+        const dy = player.y - this.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
 
-        if (this.isMovingToPlayer) {
-            const dx = player.x - this.x;
-            const dy = player.y - this.y;
-            const distance = Math.sqrt(dx * dx + dy * dy);
-            
-            if (distance > 0) {
-                const speed = player.speed * 2;
-                this.x += (dx / distance) * speed;
-                this.y += (dy / distance) * speed;
-            }
+        // If within pickup range, move towards player
+        if (distance <= this.pickupRange) {
+            // Normalize direction and apply speed
+            const normalizer = distance > 0 ? 1 / distance : 0;
+            this.velocityX = dx * normalizer * this.magnetSpeed;
+            this.velocityY = dy * normalizer * this.magnetSpeed;
+
+            // Update position
+            this.x += this.velocityX;
+            this.y += this.velocityY;
         }
     }
 
