@@ -379,14 +379,22 @@ class Game {
                 // Enemy shooting logic
                 const projectile = enemy.shootProjectile(this.player.x, this.player.y);
                 if (projectile) {
-                    projectile.isFromPlayer = false;
-                    projectile.isFriendly = false;
-                    this.projectiles.push(projectile);
+                    if (Array.isArray(projectile)) {
+                        this.projectiles.push(...projectile);
+                    } else {
+                        this.projectiles.push(projectile);
+                    }
                 }
             });
 
             // Update projectiles
+            const now = Date.now();
             this.projectiles = this.projectiles.filter(projectile => {
+                // Skip update if projectile is delayed
+                if (projectile.delay && now - this.player.currentWeapon.lastShot < projectile.delay) {
+                    return true;
+                }
+                
                 projectile.update();
                 
                 // Check for collisions

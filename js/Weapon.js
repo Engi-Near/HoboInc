@@ -32,6 +32,7 @@ class Weapon {
                 this.penetration = 2;
                 this.lastShot = 0;
                 this.burstCount = 2;
+                this.burstDelay = 100; // 100ms between bursts
                 break;
             case 'rifle':
                 this.damage = 50;
@@ -47,6 +48,7 @@ class Weapon {
                 this.penetration = 2;
                 this.lastShot = 0;
                 this.burstCount = 3;
+                this.burstDelay = 100; // 100ms between bursts
                 break;
         }
     }
@@ -81,15 +83,13 @@ class Weapon {
                 break;
 
             case 'upgradedshotgun':
-                // Two bursts of three shots each
-                for (let i = 0; i < this.burstCount; i++) {
-                    setTimeout(() => {
-                        // Center shot
-                        projectiles.push(this.createProjectile(x, y, angle));
-                        // Side shots at ±10 degrees
-                        projectiles.push(this.createProjectile(x, y, angle + Math.PI / 18));
-                        projectiles.push(this.createProjectile(x, y, angle - Math.PI / 18));
-                    }, i * 100); // 100ms between bursts
+                // Create all projectiles immediately
+                for (let burst = 0; burst < this.burstCount; burst++) {
+                    // Center shot
+                    projectiles.push(this.createDelayedProjectile(x, y, angle, burst * this.burstDelay));
+                    // Side shots at ±10 degrees
+                    projectiles.push(this.createDelayedProjectile(x, y, angle + Math.PI / 18, burst * this.burstDelay));
+                    projectiles.push(this.createDelayedProjectile(x, y, angle - Math.PI / 18, burst * this.burstDelay));
                 }
                 break;
 
@@ -99,17 +99,15 @@ class Weapon {
                 break;
 
             case 'supershotgun':
-                // Three bursts of five shots each
-                for (let i = 0; i < this.burstCount; i++) {
-                    setTimeout(() => {
-                        // Center shot
-                        projectiles.push(this.createProjectile(x, y, angle));
-                        // Side shots at ±10 and ±20 degrees
-                        projectiles.push(this.createProjectile(x, y, angle + Math.PI / 18));
-                        projectiles.push(this.createProjectile(x, y, angle - Math.PI / 18));
-                        projectiles.push(this.createProjectile(x, y, angle + Math.PI / 9));
-                        projectiles.push(this.createProjectile(x, y, angle - Math.PI / 9));
-                    }, i * 100); // 100ms between bursts
+                // Create all projectiles immediately
+                for (let burst = 0; burst < this.burstCount; burst++) {
+                    // Center shot
+                    projectiles.push(this.createDelayedProjectile(x, y, angle, burst * this.burstDelay));
+                    // Side shots at ±10 and ±20 degrees
+                    projectiles.push(this.createDelayedProjectile(x, y, angle + Math.PI / 18, burst * this.burstDelay));
+                    projectiles.push(this.createDelayedProjectile(x, y, angle - Math.PI / 18, burst * this.burstDelay));
+                    projectiles.push(this.createDelayedProjectile(x, y, angle + Math.PI / 9, burst * this.burstDelay));
+                    projectiles.push(this.createDelayedProjectile(x, y, angle - Math.PI / 9, burst * this.burstDelay));
                 }
                 break;
         }
@@ -131,6 +129,12 @@ class Weapon {
         projectile.setDirection(angle);
         projectile.isFromPlayer = true;
         projectile.isFriendly = true;
+        return projectile;
+    }
+
+    createDelayedProjectile(x, y, angle, delay) {
+        const projectile = this.createProjectile(x, y, angle);
+        projectile.delay = delay; // Add delay property to projectile
         return projectile;
     }
 } 

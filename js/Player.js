@@ -9,6 +9,7 @@ class Player extends GameObject {
         this.immunityDuration = 2000; // 2 seconds
         this.lastHealthGainTime = 0;
         this.healthGainInterval = 90000; // 90 seconds
+        this.aimLineLength = 50; // Length of the aiming line
         
         // Movement
         this.movementKeys = {
