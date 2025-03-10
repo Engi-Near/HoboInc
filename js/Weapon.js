@@ -6,6 +6,7 @@ class Weapon {
         switch(type) {
             case 'pistol':
                 this.name = 'Pistol';
+                this.weaponClass = 'pistol';
                 this.damage = 25;
                 this.fireRate = 250; // 4 shots per second
                 this.projectileSpeed = 12;
@@ -14,14 +15,18 @@ class Weapon {
                 break;
             case 'shotgun':
                 this.name = 'Shotgun';
+                this.weaponClass = 'shotgun';
                 this.damage = 15;
                 this.fireRate = 750; // 1.33 shots per second
                 this.projectileSpeed = 15;
                 this.penetration = 1;
                 this.lastShot = 0;
+                this.pelletCount = 3;
+                this.spread = Math.PI / 12; // 15 degrees between pellets
                 break;
             case 'machinegun':
                 this.name = 'Machine Gun';
+                this.weaponClass = 'machinegun';
                 this.damage = 15;
                 this.fireRate = 100; // 10 shots per second
                 this.projectileSpeed = 20;
@@ -32,6 +37,7 @@ class Weapon {
                 break;
             case 'upgradedshotgun':
                 this.name = 'Heavy Shotgun';
+                this.weaponClass = 'shotgun';
                 this.damage = 20;
                 this.fireRate = 1000; // 1 shot per second
                 this.projectileSpeed = 15;
@@ -39,9 +45,12 @@ class Weapon {
                 this.lastShot = 0;
                 this.burstCount = 2;
                 this.burstDelay = 100; // 100ms between bursts
+                this.pelletCount = 3;
+                this.spread = Math.PI / 18; // 10 degrees between pellets
                 break;
             case 'rifle':
                 this.name = 'Rifle';
+                this.weaponClass = 'rifle';
                 this.damage = 50;
                 this.fireRate = 1000; // 1 shot per second
                 this.projectileSpeed = 25;
@@ -50,6 +59,7 @@ class Weapon {
                 break;
             case 'supershotgun':
                 this.name = 'Super Shotgun';
+                this.weaponClass = 'shotgun';
                 this.damage = 25;
                 this.fireRate = 1250; // 0.8 shots per second
                 this.projectileSpeed = 15;
@@ -57,6 +67,8 @@ class Weapon {
                 this.lastShot = 0;
                 this.burstCount = 3;
                 this.burstDelay = 100; // 100ms between bursts
+                this.pelletCount = 5;
+                this.spread = Math.PI / 18; // 10 degrees between pellets
                 break;
         }
     }
@@ -71,52 +83,41 @@ class Weapon {
         this.lastShot = Date.now();
         const projectiles = [];
 
-        switch(this.type) {
+        switch(this.weaponClass) {
             case 'pistol':
                 projectiles.push(this.createProjectile(x, y, angle));
                 break;
             
             case 'shotgun':
-                // Center shot
-                projectiles.push(this.createProjectile(x, y, angle));
-                // Side shots at ±15 degrees
-                projectiles.push(this.createProjectile(x, y, angle + Math.PI / 12));
-                projectiles.push(this.createProjectile(x, y, angle - Math.PI / 12));
+                // Calculate the total spread and starting angle
+                const totalSpread = this.spread * (this.pelletCount - 1);
+                const startAngle = angle - totalSpread / 2;
+                
+                // Create pellets with even spread
+                for (let i = 0; i < this.pelletCount; i++) {
+                    const pelletAngle = startAngle + (this.spread * i);
+                    if (this.burstCount) {
+                        // For burst shotguns, create delayed projectiles
+                        for (let burst = 0; burst < this.burstCount; burst++) {
+                            projectiles.push(this.createDelayedProjectile(x, y, pelletAngle, burst * this.burstDelay));
+                        }
+                    } else {
+                        projectiles.push(this.createProjectile(x, y, pelletAngle));
+                    }
+                }
                 break;
             
             case 'machinegun':
-                // Single fast shot with slight spread
-                const spread = (Math.random() - 0.5) * Math.PI / 18; // ±5 degrees
-                projectiles.push(this.createProjectile(x, y, angle + spread));
-                break;
-
-            case 'upgradedshotgun':
-                // Create all projectiles immediately
+                // Burst fire with slight spread
                 for (let burst = 0; burst < this.burstCount; burst++) {
-                    // Center shot
-                    projectiles.push(this.createDelayedProjectile(x, y, angle, burst * this.burstDelay));
-                    // Side shots at ±10 degrees
-                    projectiles.push(this.createDelayedProjectile(x, y, angle + Math.PI / 18, burst * this.burstDelay));
-                    projectiles.push(this.createDelayedProjectile(x, y, angle - Math.PI / 18, burst * this.burstDelay));
+                    const spread = (Math.random() - 0.5) * Math.PI / 18; // ±5 degrees
+                    projectiles.push(this.createDelayedProjectile(x, y, angle + spread, burst * this.burstDelay));
                 }
                 break;
 
             case 'rifle':
                 // Single high-damage, high-penetration shot
                 projectiles.push(this.createProjectile(x, y, angle));
-                break;
-
-            case 'supershotgun':
-                // Create all projectiles immediately
-                for (let burst = 0; burst < this.burstCount; burst++) {
-                    // Center shot
-                    projectiles.push(this.createDelayedProjectile(x, y, angle, burst * this.burstDelay));
-                    // Side shots at ±10 and ±20 degrees
-                    projectiles.push(this.createDelayedProjectile(x, y, angle + Math.PI / 18, burst * this.burstDelay));
-                    projectiles.push(this.createDelayedProjectile(x, y, angle - Math.PI / 18, burst * this.burstDelay));
-                    projectiles.push(this.createDelayedProjectile(x, y, angle + Math.PI / 9, burst * this.burstDelay));
-                    projectiles.push(this.createDelayedProjectile(x, y, angle - Math.PI / 9, burst * this.burstDelay));
-                }
                 break;
         }
 
