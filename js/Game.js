@@ -158,8 +158,6 @@ class Game {
         window.addEventListener('keydown', (e) => {
             if (this.gameState.currentState === GameState.UPGRADE && e.code === 'Space') {
                 // Handle upgrade first
-                const upgradeCost = this.gameState.getUpgradeCost();
-                this.gameState.coins -= upgradeCost;
                 this.gameState.upgrade();
                 return; // Prevent other key handling during upgrade
             }

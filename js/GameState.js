@@ -47,6 +47,7 @@ class GameState {
 
     upgrade() {
         if (this.coins >= this.getUpgradeCost()) {
+            this.coins -= this.getUpgradeCost();
             this.upgrades++;
             this.currentState = GameState.PLAYING;
         }
