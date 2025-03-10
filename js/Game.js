@@ -119,18 +119,22 @@ class Game {
 
         // Mouse down for shooting
         this.canvas.addEventListener('mousedown', (e) => {
-            this.isMouseDown = true;
-            if (this.gameState.currentState === GameState.PLAYING && this.player) {
-                const projectiles = this.player.shoot();
-                if (projectiles && projectiles.length > 0) {
-                    this.projectiles.push(...projectiles);
+            if (e.button === 0) { // Only respond to left click
+                this.isMouseDown = true;
+                if (this.gameState.currentState === GameState.PLAYING && this.player) {
+                    const projectiles = this.player.shoot();
+                    if (projectiles && projectiles.length > 0) {
+                        this.projectiles.push(...projectiles);
+                    }
                 }
             }
         });
 
         // Mouse up to stop shooting
-        this.canvas.addEventListener('mouseup', () => {
-            this.isMouseDown = false;
+        this.canvas.addEventListener('mouseup', (e) => {
+            if (e.button === 0) { // Only respond to left click
+                this.isMouseDown = false;
+            }
         });
 
         // Mouse leave to stop shooting
