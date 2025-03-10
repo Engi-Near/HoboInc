@@ -10,14 +10,22 @@
             align-items: center;
             min-height: 100vh;
             background-color: #000;
+            flex-direction: column;
         }
         canvas {
             border: 2px solid #333;
         }
+        .game-text {
+            color: white;
+            font-family: Georgia, serif;
+            margin: 20px 0;
+        }
     </style>
 </head>
 <body>
+    <div class="game-text">Commander Shoot</div>
     <canvas id="gameCanvas"></canvas>
+    <div class="game-text">WASD to move. Click to shoot. Survive!</div>
 
     <!-- Core game objects -->
     <script src="js/GameObject.js"></script>
