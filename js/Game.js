@@ -119,13 +119,11 @@ class Game {
 
         // Mouse down for shooting
         this.canvas.addEventListener('mousedown', (e) => {
-            if (e.button === 0) { // Only respond to left click
+            if (e.button === 0 && this.gameState.currentState === GameState.PLAYING && this.player) { // Only respond to left click during gameplay
                 this.isMouseDown = true;
-                if (this.gameState.currentState === GameState.PLAYING && this.player) {
-                    const projectiles = this.player.shoot();
-                    if (projectiles && projectiles.length > 0) {
-                        this.projectiles.push(...projectiles);
-                    }
+                const projectiles = this.player.shoot();
+                if (projectiles && projectiles.length > 0) {
+                    this.projectiles.push(...projectiles);
                 }
             }
         });
@@ -158,6 +156,14 @@ class Game {
 
         // Keyboard controls
         window.addEventListener('keydown', (e) => {
+            if (this.gameState.currentState === GameState.UPGRADE && e.code === 'Space') {
+                // Handle upgrade first
+                const upgradeCost = this.gameState.getUpgradeCost();
+                this.gameState.coins -= upgradeCost;
+                this.gameState.upgrade();
+                return; // Prevent other key handling during upgrade
+            }
+
             if (this.gameState.currentState === GameState.PLAYING && this.player) {
                 switch(e.key.toLowerCase()) {
                     case 'w': this.player.move('up', true); break;
@@ -183,16 +189,6 @@ class Game {
                     case 'a': this.player.move('left', false); break;
                     case 'd': this.player.move('right', false); break;
                 }
-            }
-        });
-
-        // Add space key listener for upgrades
-        window.addEventListener('keydown', (e) => {
-            if (this.gameState.currentState === GameState.UPGRADE && e.code === 'Space') {
-                // Instead of resetting coins, just decrement by the upgrade cost
-                const upgradeCost = this.gameState.getUpgradeCost();
-                this.gameState.coins -= upgradeCost; // Decrement coins by the cost
-                this.gameState.upgrade();
             }
         });
     }
