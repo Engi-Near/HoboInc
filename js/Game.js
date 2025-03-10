@@ -14,6 +14,7 @@ class Game {
         this.enemySpawnInterval = 10000; // 10 seconds
         this.scorePerKill = 100;
         this.gameStartTime = 0;
+        this.isMouseDown = false;
 
         // Wave definitions for normal mode
         this.normalModeWaves = [
@@ -116,14 +117,25 @@ class Game {
             }
         });
 
-        // Mouse click for shooting
-        this.canvas.addEventListener('click', (e) => {
+        // Mouse down for shooting
+        this.canvas.addEventListener('mousedown', (e) => {
+            this.isMouseDown = true;
             if (this.gameState.currentState === GameState.PLAYING && this.player) {
                 const projectiles = this.player.shoot();
                 if (projectiles && projectiles.length > 0) {
                     this.projectiles.push(...projectiles);
                 }
             }
+        });
+
+        // Mouse up to stop shooting
+        this.canvas.addEventListener('mouseup', () => {
+            this.isMouseDown = false;
+        });
+
+        // Mouse leave to stop shooting
+        this.canvas.addEventListener('mouseleave', () => {
+            this.isMouseDown = false;
         });
 
         // Menu and button interactions
@@ -366,6 +378,14 @@ class Game {
             }
             return true;
         });
+
+        // Handle continuous shooting
+        if (this.isMouseDown && this.player && this.gameState.currentState === GameState.PLAYING) {
+            const projectiles = this.player.shoot();
+            if (projectiles && projectiles.length > 0) {
+                this.projectiles.push(...projectiles);
+            }
+        }
 
         // Only update game objects if not in upgrade state
         if (this.gameState.currentState === GameState.PLAYING) {
