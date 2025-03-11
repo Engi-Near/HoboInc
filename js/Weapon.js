@@ -1,76 +1,59 @@
 class Weapon {
+    // Define base properties that all weapons must have
+    static BASE_PROPERTIES = ['name', 'weaponClass', 'ammoType', 'damage', 'fireRate', 'projectileSpeed', 'penetration'];
+    
+    // Define optional properties that some weapons might have
+    static OPTIONAL_PROPERTIES = ['pelletCount', 'spread', 'burstCount', 'burstDelay'];
+
+    // Define knockback multipliers for different ammo types
+    static BASE_KNOCKBACK = 5;
+    static KNOCKBACK_MULTIPLIERS = {
+        'Light': 3,
+        'Medium': 1.5,
+        'Heavy': 1
+    };
+
+    // Weapon definitions as arrays in a consistent order matching BASE_PROPERTIES
+    // [name, weaponClass, ammoType, damage, fireRate, projectileSpeed, penetration]
+    static WEAPON_DEFINITIONS = {
+        'pistol': ['Pistol', 'pistol', 'Light', 25, 250, 12, 1],
+        'shotgun': ['Shotgun', 'shotgun', 'Light', 15, 750, 15, 1, 3, Math.PI / 12],
+        'machinegun': ['Machine Gun', 'machinegun', 'Medium', 15, 100, 20, 1, 0, 0, 5, 20],
+        'upgradedshotgun': ['Heavy Shotgun', 'shotgun', 'Light', 20, 1000, 15, 2, 3, Math.PI / 18, 2, 100],
+        'rifle': ['Rifle', 'rifle', 'Heavy', 50, 1000, 25, 5],
+        'supershotgun': ['Super Shotgun', 'shotgun', 'Light', 25, 1250, 15, 2, 5, Math.PI / 18, 3, 100]
+    };
+/*['newweapon': [
+    'New Weapon',  // name
+    'rifle',       // weaponClass
+    'Heavy',       // ammoType
+    30,            // damage
+    500,           // fireRate
+    18,            // projectileSpeed
+    3,             // penetration
+    0,             // pelletCount (optional)
+    0,             // spread (optional)
+    2,             // burstCount (optional)
+    50,            // burstDelay (optional)
+]*/
+
+
     constructor(type) {
         this.type = type;
+        const definition = Weapon.WEAPON_DEFINITIONS[type];
         
-        // Set weapon properties based on type
-        switch(type) {
-            case 'pistol':
-                this.name = 'Pistol';
-                this.weaponClass = 'pistol';
-                this.damage = 25;
-                this.fireRate = 250; // 4 shots per second
-                this.projectileSpeed = 12;
-                this.penetration = 1;
-                this.lastShot = 0;
-                break;
-            case 'shotgun':
-                this.name = 'Shotgun';
-                this.weaponClass = 'shotgun';
-                this.damage = 15;
-                this.fireRate = 750; // 1.33 shots per second
-                this.projectileSpeed = 15;
-                this.penetration = 1;
-                this.lastShot = 0;
-                this.pelletCount = 3;
-                this.spread = Math.PI / 12; // 15 degrees between pellets
-                break;
-            case 'machinegun':
-                this.name = 'Machine Gun';
-                this.weaponClass = 'machinegun';
-                this.damage = 15;
-                this.fireRate = 100; // 10 shots per second
-                this.projectileSpeed = 20;
-                this.penetration = 1;
-                this.lastShot = 0;
-                this.burstCount = 5;
-                this.burstDelay = 20;
-                break;
-            case 'upgradedshotgun':
-                this.name = 'Heavy Shotgun';
-                this.weaponClass = 'shotgun';
-                this.damage = 20;
-                this.fireRate = 1000; // 1 shot per second
-                this.projectileSpeed = 15;
-                this.penetration = 2;
-                this.lastShot = 0;
-                this.burstCount = 2;
-                this.burstDelay = 100; // 100ms between bursts
-                this.pelletCount = 3;
-                this.spread = Math.PI / 18; // 10 degrees between pellets
-                break;
-            case 'rifle':
-                this.name = 'Rifle';
-                this.weaponClass = 'rifle';
-                this.damage = 50;
-                this.fireRate = 1000; // 1 shot per second
-                this.projectileSpeed = 25;
-                this.penetration = 5;
-                this.lastShot = 0;
-                break;
-            case 'supershotgun':
-                this.name = 'Super Shotgun';
-                this.weaponClass = 'shotgun';
-                this.damage = 25;
-                this.fireRate = 1250; // 0.8 shots per second
-                this.projectileSpeed = 15;
-                this.penetration = 2;
-                this.lastShot = 0;
-                this.burstCount = 3;
-                this.burstDelay = 100; // 100ms between bursts
-                this.pelletCount = 5;
-                this.spread = Math.PI / 18; // 10 degrees between pellets
-                break;
-        }
+        // Initialize lastShot
+        this.lastShot = 0;
+
+        // Set base properties from definition array
+        Weapon.BASE_PROPERTIES.forEach((prop, index) => {
+            this[prop] = definition[index];
+        });
+
+        // Set optional properties, defaulting to 0 if not defined
+        Weapon.OPTIONAL_PROPERTIES.forEach((prop, index) => {
+            this[prop] = definition[index + Weapon.BASE_PROPERTIES.length] || 0;
+        });
     }
 
     canShoot() {
@@ -125,6 +108,7 @@ class Weapon {
     }
 
     createProjectile(x, y, angle) {
+        const knockback = Weapon.BASE_KNOCKBACK * Weapon.KNOCKBACK_MULTIPLIERS[this.ammoType];
         const projectile = new Projectile(
             x,
             y,
@@ -133,7 +117,7 @@ class Weapon {
             this.projectileSpeed,
             this.damage,
             this.penetration,
-            5  // knockback
+            knockback
         );
         projectile.setDirection(angle);
         projectile.isFromPlayer = true;
