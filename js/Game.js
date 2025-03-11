@@ -168,13 +168,7 @@ class Game {
                     case 's': this.player.move('down', true); break;
                     case 'a': this.player.move('left', true); break;
                     case 'd': this.player.move('right', true); break;
-                    // Weapon switching
-                    case '1': this.player.switchWeapon('pistol'); break;
-                    case '2': this.player.switchWeapon('shotgun'); break;
-                    case '3': this.player.switchWeapon('machinegun'); break;
-                    case '4': this.player.switchWeapon('upgradedshotgun'); break;
-                    case '5': this.player.switchWeapon('rifle'); break;
-                    case '6': this.player.switchWeapon('supershotgun'); break;
+                    case 'f': this.player.switchWeapon(); break;
                 }
             }
         });

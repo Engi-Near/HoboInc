@@ -19,27 +19,28 @@ class Player extends GameObject {
             right: false
         };
 
-        // Initialize all weapons
-        this.weapons = {
-            pistol: new Weapon('pistol'),
-            shotgun: new Weapon('shotgun'),
-            machinegun: new Weapon('machinegun'),
-            upgradedshotgun: new Weapon('upgradedshotgun'),
-            rifle: new Weapon('rifle'),
-            supershotgun: new Weapon('supershotgun')
-        };
+        // Initialize weapons with only 2 slots
+        this.weapons = [
+            new Weapon('pistol'),  // First slot
+            new Weapon('pistol')   // Second slot
+        ];
         
-        // Start with pistol
-        this.currentWeapon = this.weapons.pistol;
+        // Start with first weapon
+        this.currentWeaponIndex = 0;
+        this.currentWeapon = this.weapons[0];
     }
 
-    switchWeapon(type) {
-        if (this.weapons[type]) {
-            console.log('Switching to weapon:', type); // Debug log
-            this.currentWeapon = this.weapons[type];
-        } else {
-            console.log('Invalid weapon type:', type); // Debug log
-        }
+    // Method to change a weapon in a specific slot
+    changeWeapon(weaponType) {
+        // Change the weapon in the current slot
+        this.weapons[this.currentWeaponIndex] = new Weapon(weaponType);
+        this.currentWeapon = this.weapons[this.currentWeaponIndex];
+    }
+
+    // Switch between weapon slots
+    switchWeapon() {
+        this.currentWeaponIndex = (this.currentWeaponIndex + 1) % this.weapons.length;
+        this.currentWeapon = this.weapons[this.currentWeaponIndex];
     }
 
     move(direction, isPressed) {
