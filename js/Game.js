@@ -420,6 +420,9 @@ class Game {
                     // Friendly projectile hitting enemies
                     for (let i = this.enemies.length - 1; i >= 0; i--) {
                         if (projectile.isColliding(this.enemies[i])) {
+                            // Apply knockback before damage
+                            projectile.applyKnockback(this.enemies[i]);
+                            
                             if (this.enemies[i].takeDamage(projectile.damage)) {
                                 this.gameState.updateScore(this.scorePerKill);
                                 // Spawn coin when enemy dies
