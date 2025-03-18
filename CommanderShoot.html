@@ -11,21 +11,46 @@
             min-height: 100vh;
             background-color: #000;
             flex-direction: column;
+            overflow: hidden;
         }
         canvas {
             border: 2px solid #333;
+            display: block;
         }
         .game-text {
             color: white;
             font-family: Georgia, serif;
-            margin: 20px 0;
+            width: 95%;
+            text-align: center;
+            pointer-events: none;
+            position: fixed;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 1.2em;
+            z-index: 1;
+        }
+        .game-text.top {
+            top: 2.5vh;
+        }
+        .game-text.bottom {
+            bottom: 2.5vh;
+        }
+        #game-container {
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            width: 100%;
+            height: 100vh;
         }
     </style>
 </head>
 <body>
-    <div class="game-text">Commander Shoot</div>
-    <canvas id="gameCanvas"></canvas>
-    <div class="game-text">WASD to move. Click to shoot. Survive!</div>
+    <div id="game-container">
+        <div class="game-text top">Commander Shoot</div>
+        <canvas id="gameCanvas"></canvas>
+        <div class="game-text bottom">WASD to move. F to change weapon. Click to shoot. Survive! Slaughter your enemies!</div>
+    </div>
 
     <!-- Core game objects -->
     <script src="js/GameObject.js"></script>
@@ -47,4 +72,4 @@
     <script src="js/UpgradeSystem.js"></script>
     <script src="js/UpgradeUI.js"></script>
 </body>
-</html> 
+</html>
