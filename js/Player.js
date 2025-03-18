@@ -34,7 +34,7 @@ class Player extends GameObject {
         this.fireRateMultiplier = 1;
         this.pickupRange = 100;
         this.pickupRangeMultiplier = 1;
-        this.hasCritical = true;
+        this.hasCritical = false;
         this.criticalChance = 0.1; // 10%
         this.criticalDamageMultiplier = 2;
         this.shields = 0;
