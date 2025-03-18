@@ -8,8 +8,15 @@ class Renderer {
     }
 
     resize() {
-        this.canvas.width = window.innerWidth;
-        this.canvas.height = window.innerHeight;
+        // Calculate 95% of window dimensions (2.5% margin on each side)
+        this.canvas.width = window.innerWidth * 0.975;
+        this.canvas.height = window.innerHeight * 0.85;
+        
+        // Center the canvas
+        this.canvas.style.position = 'absolute';
+        this.canvas.style.left = '50%';
+        this.canvas.style.top = '50%';
+        this.canvas.style.transform = 'translate(-50%, -50%)';
     }
 
     clear() {

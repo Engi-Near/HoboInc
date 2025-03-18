@@ -150,7 +150,7 @@ class Enemy extends GameObject {
             8,
             8,
             8,
-            1, // damage
+            1,  // damage set to 1
             1,  // penetration
             0   // no knockback
         );
