@@ -1,6 +1,6 @@
 class Player extends GameObject {
     constructor(x, y) {
-        super(x, y, 32, 32, 5);
+        super(x, y, 28, 28, 5);
         this.sprite = new Sprite(this.width, this.height, '#0f0');
         this.angle = 0;
         this.health = 3;
@@ -22,12 +22,22 @@ class Player extends GameObject {
         // Initialize weapons with only 2 slots
         this.weapons = [
             new Weapon('pistol'),  // First slot
-            new Weapon('pistol')   // Second slot
+            new Weapon('shotgun')   // Second slot
         ];
         
         // Start with first weapon
         this.currentWeaponIndex = 0;
         this.currentWeapon = this.weapons[0];
+
+        // Upgrade-related properties
+        this.damageMultiplier = 1;
+        this.fireRateMultiplier = 1;
+        this.pickupRange = 100;
+        this.pickupRangeMultiplier = 1;
+        this.hasCritical = true;
+        this.criticalChance = 0.1; // 10%
+        this.criticalDamageMultiplier = 2;
+        this.shields = 0;
     }
 
     // Method to change a weapon in a specific slot
@@ -110,24 +120,31 @@ class Player extends GameObject {
             this.velocityY *= normalizer;
         }
 
-        // Update position
+        // Try X movement first
         this.x += this.velocityX;
-        this.y += this.velocityY;
-
-        // Check for wall collisions
         const bounds = this.getBounds();
         const tileX1 = Math.floor(bounds.left / map.tileSize);
         const tileX2 = Math.floor(bounds.right / map.tileSize);
         const tileY1 = Math.floor(bounds.top / map.tileSize);
         const tileY2 = Math.floor(bounds.bottom / map.tileSize);
 
+        // Check X collision
         if (map.isWall(tileX1, tileY1) || map.isWall(tileX1, tileY2) ||
             map.isWall(tileX2, tileY1) || map.isWall(tileX2, tileY2)) {
             this.x = prevX;
         }
 
-        if (map.isWall(tileX1, tileY1) || map.isWall(tileX2, tileY1) ||
-            map.isWall(tileX1, tileY2) || map.isWall(tileX2, tileY2)) {
+        // Try Y movement
+        this.y += this.velocityY;
+        const newBounds = this.getBounds();
+        const newTileX1 = Math.floor(newBounds.left / map.tileSize);
+        const newTileX2 = Math.floor(newBounds.right / map.tileSize);
+        const newTileY1 = Math.floor(newBounds.top / map.tileSize);
+        const newTileY2 = Math.floor(newBounds.bottom / map.tileSize);
+
+        // Check Y collision
+        if (map.isWall(newTileX1, newTileY1) || map.isWall(newTileX1, newTileY2) ||
+            map.isWall(newTileX2, newTileY1) || map.isWall(newTileX2, newTileY2)) {
             this.y = prevY;
         }
     }
@@ -141,11 +158,21 @@ class Player extends GameObject {
 
     shoot() {
         if (this.currentWeapon) {
-            return this.currentWeapon.shoot(
+            const bullets = this.currentWeapon.shoot(
                 this.x + this.width / 2,
                 this.y + this.height / 2,
                 this.angle
             );
+
+            // Apply damage multiplier and critical hits
+            bullets.forEach(bullet => {
+                bullet.damage *= this.damageMultiplier;
+                if (this.hasCritical && Math.random() < this.criticalChance) {
+                    bullet.damage *= this.criticalDamageMultiplier;
+                }
+            });
+
+            return bullets;
         }
         return [];
     }
@@ -153,10 +180,30 @@ class Player extends GameObject {
     takeDamage(amount) {
         const now = Date.now();
         if (now - this.lastDamageTime >= this.immunityDuration) {
+            if (this.shields > 0) {
+                this.shields--;
+                this.lastDamageTime = now; // Still apply immunity after shield break
+                return false;
+            }
+            else {
             this.health -= amount;
             this.lastDamageTime = now;
             return this.health <= 0;
+            }
         }
         return false;
+    }
+
+    resetUpgrades() {
+        this.damageMultiplier = 1;
+        this.fireRateMultiplier = 1;
+        this.pickupRange = 100;
+        this.pickupRangeMultiplier = 1;
+        this.hasCritical = false;
+        this.criticalChance = 0.1;
+        this.criticalDamageMultiplier = 2;
+        this.shields = 0;
+        this.speed = 5; // Reset to base speed
+        this.healthGainInterval = 90000; // Reset to base health recovery time
     }
 } 

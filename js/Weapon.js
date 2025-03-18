@@ -21,7 +21,9 @@ class Weapon {
         'machinegun': ['Machine Gun', 'machinegun', 'Medium', 15, 100, 20, 1, 0, 0, 5, 20],
         'upgradedshotgun': ['Heavy Shotgun', 'shotgun', 'Light', 20, 1000, 15, 2, 3, Math.PI / 18, 2, 100],
         'rifle': ['Rifle', 'rifle', 'Heavy', 50, 1000, 25, 5],
-        'supershotgun': ['Super Shotgun', 'shotgun', 'Light', 25, 1250, 15, 2, 5, Math.PI / 18, 3, 100]
+        'supershotgun': ['Super Shotgun', 'shotgun', 'Light', 25, 1250, 15, 2, 5, Math.PI / 18, 3, 100],
+        'assaultrifle': ['Assault Rifle', 'machinegun', 'Medium', 30, 500, 15, 2, 0, 0, 3, 30],
+        'submachinegun': ['Submachine Gun', 'machinegun', 'Light', 25, 100, 15, 2, 0, 0, 0, 0]
     };
 /*['newweapon': [
     'New Weapon',  // name

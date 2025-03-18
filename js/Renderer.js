@@ -2,21 +2,21 @@ class Renderer {
     constructor(canvas) {
         this.canvas = canvas;
         this.ctx = canvas.getContext('2d');
-        this.resizeCanvas();
-        window.addEventListener('resize', () => this.resizeCanvas());
+        this.resize();
+        window.addEventListener('resize', () => this.resize());
         this.font = 'Arial';
     }
 
-    resizeCanvas() {
-        this.canvas.width = window.innerWidth * 0.8;
-        this.canvas.height = window.innerHeight * 0.8;
+    resize() {
+        this.canvas.width = window.innerWidth;
+        this.canvas.height = window.innerHeight;
     }
 
     clear() {
         this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
     }
 
-    render(gameState, map, player, enemies, projectiles, coins) {
+    render(gameState, map, player, enemies, projectiles, coins, upgradeUI, damageNumbers) {
         this.clear();
 
         switch (gameState.currentState) {
@@ -27,9 +27,10 @@ class Renderer {
             case GameState.UPGRADE:
                 if (map && player) {
                     this.renderGame(map, player, enemies, projectiles, coins);
-                    this.renderUI(gameState);
+                    this.renderDamageNumbers(damageNumbers);
+                    this.renderUI(gameState, player);
                     if (gameState.currentState === GameState.UPGRADE) {
-                        this.renderUpgradePrompt();
+                        upgradeUI.draw(this.ctx, this.canvas.width, this.canvas.height);
                     }
                 }
                 break;
@@ -282,7 +283,13 @@ class Renderer {
         }
     }
 
-    renderUI(gameState) {
+    renderDamageNumbers(damageNumbers) {
+        damageNumbers.forEach(damageNumber => {
+            damageNumber.render(this.ctx, this.cameraX, this.cameraY);
+        });
+    }
+
+    renderUI(gameState, player) {
         // Set font properties
         this.ctx.font = '20px Arial';
         this.ctx.fillStyle = '#fff';
@@ -332,5 +339,26 @@ class Renderer {
         this.ctx.strokeStyle = '#fff';
         this.ctx.lineWidth = 2;
         this.ctx.strokeRect(barX, barY, barWidth, barHeight);
+
+        // Draw health boxes first
+        this.renderHealthBoxes(player);
+
+        // Draw shields on top of health boxes
+        if (player && player.shields > 0) {
+            const shieldSize = 20;
+            const shieldSpacing = 5;
+            const shieldX = this.canvas.width - (shieldSize + 10);
+            const shieldY = this.canvas.height - (shieldSize + 10);
+
+            for (let i = 0; i < player.shields; i++) {
+                this.ctx.fillStyle = '#ffd700';
+                this.ctx.fillRect(
+                    shieldX - (i * (shieldSize + shieldSpacing)),
+                    shieldY,
+                    shieldSize,
+                    shieldSize
+                );
+            }
+        }
     }
 } 

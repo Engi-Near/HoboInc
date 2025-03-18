@@ -3,6 +3,8 @@ class Game {
         this.canvas = document.getElementById('gameCanvas');
         this.renderer = new Renderer(this.canvas);
         this.gameState = new GameState();
+        this.upgradeSystem = new UpgradeSystem();
+        this.upgradeUI = new UpgradeUI();
         
         // Initialize these as null until game starts
         this.map = null;
@@ -15,6 +17,7 @@ class Game {
         this.scorePerKill = 100;
         this.gameStartTime = 0;
         this.isMouseDown = false;
+        this.damageNumbers = [];
 
         // Wave definitions for normal mode
         this.normalModeWaves = [
@@ -97,6 +100,9 @@ class Game {
         // Make game instance globally available for weapon system
         window.game = this;
 
+        // Add upgrade state handling
+        this.lastState = null;
+
         this.setupEventListeners();
         this.gameLoop();
     }
@@ -156,10 +162,23 @@ class Game {
 
         // Keyboard controls
         window.addEventListener('keydown', (e) => {
-            if (this.gameState.currentState === GameState.UPGRADE && e.code === 'Space') {
-                // Handle upgrade first
-                this.gameState.upgrade();
-                return; // Prevent other key handling during upgrade
+            if (this.gameState.currentState === GameState.UPGRADE) {
+                switch(e.code) {
+                    case 'ArrowLeft':
+                        this.upgradeUI.selectPrevious();
+                        break;
+                    case 'ArrowRight':
+                        this.upgradeUI.selectNext();
+                        break;
+                    case 'Enter':
+                        const selectedUpgrade = this.upgradeUI.getSelectedUpgrade();
+                        if (selectedUpgrade) {
+                            this.upgradeSystem.applyUpgrade(this.player, selectedUpgrade);
+                            this.gameState.upgrade();
+                        }
+                        break;
+                }
+                return;
             }
 
             if (this.gameState.currentState === GameState.PLAYING && this.player) {
@@ -321,8 +340,10 @@ class Game {
         this.resetGameState();
     }
 
-    resetGameState() {
+    async resetGameState() {
         this.map = new Map(100, 100);
+        this.map.generateMap();
+        
         // Spawn player in center of map
         const centerX = (this.map.width * this.map.tileSize) / 2;
         const centerY = (this.map.height * this.map.tileSize) / 2;
@@ -331,6 +352,8 @@ class Game {
         this.projectiles = [];
         this.coins = [];
         this.lastEnemySpawn = 0;
+        this.upgradeUI.hide();
+        this.lastState = null;
     }
 
     spawnCoin(x, y) {
@@ -338,6 +361,19 @@ class Game {
     }
 
     update() {
+        // Check for state changes
+        if (this.lastState !== this.gameState.currentState) {
+            if (this.gameState.currentState === GameState.UPGRADE) {
+                // Get random upgrades when entering upgrade state
+                const upgrades = this.upgradeSystem.getRandomUpgrades();
+                this.upgradeUI.show(upgrades);
+            } else if (this.lastState === GameState.UPGRADE) {
+                // Hide upgrade UI when leaving upgrade state
+                this.upgradeUI.hide();
+            }
+            this.lastState = this.gameState.currentState;
+        }
+
         if (this.gameState.currentState !== GameState.PLAYING && 
             this.gameState.currentState !== GameState.UPGRADE) return;
 
@@ -379,6 +415,9 @@ class Game {
             }
         }
 
+        // Update damage numbers
+        this.damageNumbers = this.damageNumbers.filter(damageNumber => damageNumber.update());
+
         // Only update game objects if not in upgrade state
         if (this.gameState.currentState === GameState.PLAYING) {
             // Spawn enemies based on current wave
@@ -416,6 +455,15 @@ class Game {
                         if (projectile.isColliding(this.enemies[i])) {
                             // Apply knockback before damage
                             projectile.applyKnockback(this.enemies[i]);
+                            
+                            // Add damage number for all hits
+                            const isCritical = this.player.hasCritical && Math.random() < this.player.criticalChance;
+                            this.damageNumbers.push(new DamageNumber(
+                                this.enemies[i].x + this.enemies[i].width / 2,
+                                this.enemies[i].y,
+                                projectile.damage,
+                                isCritical
+                            ));
                             
                             if (this.enemies[i].takeDamage(projectile.damage)) {
                                 this.gameState.updateScore(this.scorePerKill);
@@ -456,7 +504,7 @@ class Game {
 
     gameLoop() {
         this.update();
-        this.renderer.render(this.gameState, this.map, this.player, this.enemies, this.projectiles, this.coins);
+        this.renderer.render(this.gameState, this.map, this.player, this.enemies, this.projectiles, this.coins, this.upgradeUI, this.damageNumbers);
         requestAnimationFrame(() => this.gameLoop());
     }
 }
