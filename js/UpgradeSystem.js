@@ -52,7 +52,7 @@ class UpgradeSystem {
             {
                 name: "Shield",
                 description: "Gain a protective shield",
-                effects: [{ type: "gainShield" },{ type: "gainShield" },{ type: "gainShield" },{ type: "gainShield" },{ type: "gainShield" },{ type: "gainShield" },{ type: "gainShield" },{ type: "gainShield" }]
+                effects: [{ type: "gainShield" }]
             },
             {
                 name: "Upgraded Shotgun",
