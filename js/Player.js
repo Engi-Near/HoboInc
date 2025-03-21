@@ -22,7 +22,7 @@ class Player extends GameObject {
 
         // Initialize weapons with only 2 slots
         this.weapons = [
-            new Weapon('submachinegun'),  // First slot
+            new Weapon('pistol'),  // First slot
             new Weapon('shotgun')   // Second slot
         ];
         
