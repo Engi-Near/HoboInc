@@ -4,9 +4,9 @@ class Enemy extends GameObject {
         'basic': 1,
         'tank': 2,
         'ranged': 2,
-        'fast': 2,
-        'shotgunner': 4,
-        'supertank': 3
+        'fast': 4,
+        'shotgunner': 5,
+        'supertank': 7
     };
 
     // Static method to get random enemy type by threat rating
