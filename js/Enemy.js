@@ -1,4 +1,24 @@
 class Enemy extends GameObject {
+    // Static threat rating mappings
+    static THREAT_RATINGS = {
+        'basic': 1,
+        'tank': 2,
+        'ranged': 2,
+        'fast': 2,
+        'shotgunner': 4,
+        'supertank': 3
+    };
+
+    // Static method to get random enemy type by threat rating
+    static getRandomEnemyTypeByThreat(threatRating) {
+        const enemyTypes = Object.entries(Enemy.THREAT_RATINGS)
+            .filter(([_, threat]) => threat <= threatRating)
+            .map(([type, _]) => type);
+        
+        if (enemyTypes.length === 0) return 'basic'; // Fallback
+        return enemyTypes[Math.floor(Math.random() * enemyTypes.length)];
+    }
+
     constructor(x, y, type) {
         super(x, y, 32, 32, 0); // Speed will be set based on type
         this.type = type;
@@ -6,6 +26,9 @@ class Enemy extends GameObject {
         // Set properties based on type
         const baseHealth = 100;
         const baseSpeed = 3;
+        
+        // Add repulsion strength property
+        this.repulsionStrength = 0.3; // Adjustable strength of enemy repulsion
         
         switch(type) {
             case 'basic':
@@ -72,6 +95,37 @@ class Enemy extends GameObject {
             this.velocityX = (dx / distance) * this.speed;
             this.velocityY = (dy / distance) * this.speed;
         }
+
+        // Handle soft collisions with other enemies
+        let totalRepulsionX = 0;
+        let totalRepulsionY = 0;
+
+        for (const other of enemies) {
+            if (other === this) continue;
+
+            // Calculate distance between enemy centers
+            const enemyDx = this.x - other.x;
+            const enemyDy = this.y - other.y;
+            const enemyDistance = Math.sqrt(enemyDx * enemyDx + enemyDy * enemyDy);
+
+            // If enemies are overlapping
+            const minDistance = (this.width + other.width) / 2;
+            if (enemyDistance < minDistance) {
+                // Calculate overlap amount (more overlap = stronger repulsion)
+                const overlap = minDistance - enemyDistance;
+                const repulsionForce = overlap * this.repulsionStrength;
+
+                // Calculate normalized repulsion vector
+                if (enemyDistance > 0) {
+                    totalRepulsionX += (enemyDx / enemyDistance) * repulsionForce;
+                    totalRepulsionY += (enemyDy / enemyDistance) * repulsionForce;
+                }
+            }
+        }
+
+        // Add repulsion to velocity
+        this.velocityX += totalRepulsionX;
+        this.velocityY += totalRepulsionY;
 
         // Store previous position
         const prevX = this.x;

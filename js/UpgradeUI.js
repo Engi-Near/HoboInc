@@ -7,6 +7,7 @@ class UpgradeUI {
         this.padding = 20;
         this.boxWidth = 300;
         this.boxHeight = 150;
+        this.lineHeight = this.fontSize * 1.2;
     }
 
     show(upgrades) {
@@ -31,6 +32,26 @@ class UpgradeUI {
 
     getSelectedUpgrade() {
         return this.upgrades[this.selectedIndex];
+    }
+
+    // Helper function to wrap text
+    wrapText(ctx, text, maxWidth) {
+        const words = text.split(' ');
+        const lines = [];
+        let currentLine = words[0];
+
+        for (let i = 1; i < words.length; i++) {
+            const word = words[i];
+            const width = ctx.measureText(currentLine + " " + word).width;
+            if (width < maxWidth) {
+                currentLine += " " + word;
+            } else {
+                lines.push(currentLine);
+                currentLine = word;
+            }
+        }
+        lines.push(currentLine);
+        return lines;
     }
 
     draw(ctx, screenWidth, screenHeight) {
@@ -67,9 +88,16 @@ class UpgradeUI {
             // Draw title
             ctx.fillText(upgrade.name, x + this.boxWidth / 2, y + this.fontSize + 10);
 
-            // Draw description
+            // Draw wrapped description
             ctx.font = `${this.fontSize * 0.8}px Arial`;
-            ctx.fillText(upgrade.description, x + this.boxWidth / 2, y + this.fontSize * 2 + 20);
+            const descriptionLines = this.wrapText(ctx, upgrade.description, this.boxWidth - this.padding * 2);
+            descriptionLines.forEach((line, lineIndex) => {
+                ctx.fillText(
+                    line,
+                    x + this.boxWidth / 2,
+                    y + this.fontSize * 2 + 20 + (lineIndex * this.lineHeight)
+                );
+            });
         });
 
         // Draw instructions

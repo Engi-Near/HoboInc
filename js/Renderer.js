@@ -142,12 +142,56 @@ class Renderer {
         // Render UI elements (these are in screen space)
         this.renderHealthBoxes(player);
         
-        // Render weapon name above health boxes
-        this.ctx.font = '20px Arial';
-        this.ctx.fillStyle = '#fff';
-        this.ctx.textAlign = 'right';
-        const weaponY = this.canvas.height - 45 - 10; // 45 pixels above health boxes (30px box + 15px margin)
-        this.ctx.fillText(player.currentWeapon.name, this.canvas.width - 10, weaponY);
+        // Draw health boxes first
+        this.renderHealthBoxes(player);
+
+        // Draw shields on top of health boxes
+        if (player && player.shields > 0) {
+            const shieldSize = 30;
+            const shieldSpacing = 5;
+            const startX = this.canvas.width - (shieldSize + 10); // Same X alignment as health boxes
+            const startY = this.canvas.height - (shieldSize * 2 + shieldSpacing + 10); // Position one row above health boxes
+            const shieldsPerRow = 6;
+
+            for (let i = 0; i < player.shields; i++) {
+                const row = Math.floor(i / shieldsPerRow);
+                const col = i % shieldsPerRow;
+                
+                // Draw shield box
+                this.ctx.fillStyle = '#ffd700';
+                this.ctx.fillRect(
+                    startX - (col * (shieldSize + shieldSpacing)),
+                    startY - (row * (shieldSize + shieldSpacing)),
+                    shieldSize,
+                    shieldSize
+                );
+                
+                // Draw shield border
+                this.ctx.strokeStyle = '#ffa500';
+                this.ctx.lineWidth = 2;
+                this.ctx.strokeRect(
+                    startX - (col * (shieldSize + shieldSpacing)),
+                    startY - (row * (shieldSize + shieldSpacing)),
+                    shieldSize,
+                    shieldSize
+                );
+            }
+
+            // Render weapon name above the top row of shields
+            const numRows = Math.ceil(player.shields / shieldsPerRow);
+            const weaponY = this.canvas.height - ((shieldSize + 10) * (numRows + 1)) - 5;
+            this.ctx.font = '20px Arial';
+            this.ctx.fillStyle = '#fff';
+            this.ctx.textAlign = 'right';
+            this.ctx.fillText(player.currentWeapon.name, this.canvas.width - 10, weaponY);
+        } else {
+            // If no shields, render weapon name above health boxes
+            const weaponY = this.canvas.height - 45 - 10;
+            this.ctx.font = '20px Arial';
+            this.ctx.fillStyle = '#fff';
+            this.ctx.textAlign = 'right';
+            this.ctx.fillText(player.currentWeapon.name, this.canvas.width - 10, weaponY);
+        }
     }
 
     worldToScreen(x, y) {
@@ -352,20 +396,50 @@ class Renderer {
 
         // Draw shields on top of health boxes
         if (player && player.shields > 0) {
-            const shieldSize = 20;
+            const shieldSize = 30;
             const shieldSpacing = 5;
-            const shieldX = this.canvas.width - (shieldSize + 10);
-            const shieldY = this.canvas.height - (shieldSize + 10);
+            const startX = this.canvas.width - (shieldSize + 10); // Same X alignment as health boxes
+            const startY = this.canvas.height - (shieldSize * 2 + shieldSpacing + 10); // Position one row above health boxes
+            const shieldsPerRow = 6;
 
             for (let i = 0; i < player.shields; i++) {
+                const row = Math.floor(i / shieldsPerRow);
+                const col = i % shieldsPerRow;
+                
+                // Draw shield box
                 this.ctx.fillStyle = '#ffd700';
                 this.ctx.fillRect(
-                    shieldX - (i * (shieldSize + shieldSpacing)),
-                    shieldY,
+                    startX - (col * (shieldSize + shieldSpacing)),
+                    startY - (row * (shieldSize + shieldSpacing)),
+                    shieldSize,
+                    shieldSize
+                );
+                
+                // Draw shield border
+                this.ctx.strokeStyle = '#ffa500';
+                this.ctx.lineWidth = 2;
+                this.ctx.strokeRect(
+                    startX - (col * (shieldSize + shieldSpacing)),
+                    startY - (row * (shieldSize + shieldSpacing)),
                     shieldSize,
                     shieldSize
                 );
             }
+
+            // Render weapon name above the top row of shields
+            const numRows = Math.ceil(player.shields / shieldsPerRow);
+            const weaponY = this.canvas.height - ((shieldSize + 10) * (numRows + 1)) - 5;
+            this.ctx.font = '20px Arial';
+            this.ctx.fillStyle = '#fff';
+            this.ctx.textAlign = 'right';
+            this.ctx.fillText(player.currentWeapon.name, this.canvas.width - 10, weaponY);
+        } else {
+            // If no shields, render weapon name above health boxes
+            const weaponY = this.canvas.height - 45 - 10;
+            this.ctx.font = '20px Arial';
+            this.ctx.fillStyle = '#fff';
+            this.ctx.textAlign = 'right';
+            this.ctx.fillText(player.currentWeapon.name, this.canvas.width - 10, weaponY);
         }
     }
 } 

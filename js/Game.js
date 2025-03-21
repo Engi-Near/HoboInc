@@ -13,89 +13,21 @@ class Game {
         this.projectiles = [];
         this.coins = [];
         this.lastEnemySpawn = 0;
-        this.enemySpawnInterval = 10000; // 10 seconds
+        this.enemySpawnRate = 1000; // 1 second
         this.scorePerKill = 100;
         this.gameStartTime = 0;
         this.isMouseDown = false;
         this.damageNumbers = [];
 
-        // Wave definitions for normal mode
-        this.normalModeWaves = [
-            {
-                time: 0,
-                enemies: [
-                    { type: 'basic', count: 5 }
-                ]
-            },
-            {
-                time: 60,
-                enemies: [
-                    { type: 'basic', count: 4 },
-                    { type: 'tank', count: 1 }
-                ]
-            },
-            {
-                time: 120,
-                enemies: [
-                    { type: 'basic', count: 2 },
-                    { type: 'tank', count: 2 },
-                    { type: 'ranged', count: 1 }
-                ]
-            }
-        ];
-
-        // Wave definitions for endless mode
-        this.endlessModeWaves = [
-            {
-                time: 0,
-                enemies: [
-                    { type: 'basic', count: 5 }
-                ]
-            },
-            {
-                time: 30,
-                enemies: [
-                    { type: 'basic', count: 7 }
-                ]
-            },
-            {
-                time: 60,
-                enemies: [
-                    { type: 'basic', count: 6 },
-                    { type: 'tank', count: 1 }
-                ]
-            },
-            {
-                time: 90,
-                enemies: [
-                    { type: 'basic', count: 8 }
-                ]
-            },
-            {
-                time: 120,
-                enemies: [
-                    { type: 'basic', count: 7 },
-                    { type: 'tank', count: 2 },
-                    { type: 'ranged', count: 1 }
-                ]
-            },
-            {
-                time: 150,
-                enemies: [
-                    { type: 'basic', count: 8 },
-                    { type: 'tank', count: 3 },
-                    { type: 'ranged', count: 2 }
-                ]
-            },
-            {
-                time: 200,
-                enemies: [
-                    { type: 'basic', count: 10 },
-                    { type: 'tank', count: 5 },
-                    { type: 'ranged', count: 3 }
-                ]
-            }
-        ];
+        // New threat-based wave system
+        this.minThreat = 0;
+        this.maxThreat = 1;
+        this.lastThreatUpdate = 0;
+        this.maxThreatUpdateInterval = 10000; // 10 seconds
+        this.minThreatUpdateInterval = 50000; // 50 seconds
+        this.threatIncrement = 0.1;
+        this.lastMaxThreatUpdate = 0;
+        this.lastMinThreatUpdate = 0;
 
         // Make game instance globally available for weapon system
         window.game = this;
@@ -233,64 +165,30 @@ class Game {
     }
 
     getCurrentWave() {
-        if (this.gameState.currentState !== GameState.PLAYING) return null;
-        
-        const gameTime = (Date.now() - this.gameStartTime) / 1000; // Convert to seconds
-        let currentWave = null;
-        
-        // Get the appropriate wave table based on game mode
-        const waveTable = this.gameState.gameMode === 'endless' ? this.endlessModeWaves : this.normalModeWaves;
-
-        // Find the latest wave for the current time
-        for (const wave of waveTable) {
-            if (gameTime >= wave.time) {
-                currentWave = {...wave};
-            } else {
-                break;
-            }
-        }
-
-        // For endless mode, add scaling enemies after 200 seconds
-        if (this.gameState.gameMode === 'endless' && gameTime > 200) {
-            const extraWaves = Math.floor((gameTime - 200) / 30); // How many 30-second intervals past 200s
-            if (extraWaves > 0) {
-                // Add scaling enemies
-                currentWave.enemies = currentWave.enemies.map(enemy => ({...enemy})); // Clone the enemies array
-                
-                // Find or create enemy types
-                let basicEnemy = currentWave.enemies.find(e => e.type === 'basic');
-                let tankEnemy = currentWave.enemies.find(e => e.type === 'tank');
-                let rangedEnemy = currentWave.enemies.find(e => e.type === 'ranged');
-
-                if (!basicEnemy) {
-                    basicEnemy = { type: 'basic', count: 0 };
-                    currentWave.enemies.push(basicEnemy);
-                }
-                if (!tankEnemy) {
-                    tankEnemy = { type: 'tank', count: 0 };
-                    currentWave.enemies.push(tankEnemy);
-                }
-                if (!rangedEnemy) {
-                    rangedEnemy = { type: 'ranged', count: 0 };
-                    currentWave.enemies.push(rangedEnemy);
-                }
-
-                // Add scaling enemies for each 30-second interval
-                basicEnemy.count += extraWaves * 2;  // +2 basic per interval
-                tankEnemy.count += extraWaves;       // +1 tank per interval
-                rangedEnemy.count += extraWaves;     // +1 ranged per interval
-            }
-        }
-
-        return currentWave;
+        // This method is no longer used with the new system
+        return null;
     }
 
     spawnWave() {
-        const wave = this.getCurrentWave();
-        if (!wave) return;
-
         const now = Date.now();
-        if (now - this.lastEnemySpawn >= this.enemySpawnInterval) {
+        const gameTime = now - this.gameStartTime;
+
+        // Update threat levels
+        // Update max threat every 10 seconds
+        
+        if (now - this.lastMaxThreatUpdate >= this.maxThreatUpdateInterval) {
+            this.maxThreat += this.threatIncrement;
+            this.lastMaxThreatUpdate = now;
+        }
+        
+        // Update min threat every 50 seconds
+        if (now - this.lastMinThreatUpdate >= this.minThreatUpdateInterval) {
+            this.minThreat += this.threatIncrement;
+            this.lastMinThreatUpdate = now;
+        }
+
+        // Check if it's time to spawn a new enemy
+        if (now - this.lastEnemySpawn >= this.enemySpawnRate) {
             // Calculate map boundaries
             const mapWidth = this.map.width * this.map.tileSize;
             const mapHeight = this.map.height * this.map.tileSize;
@@ -305,25 +203,22 @@ class Game {
                 return;
             }
 
-            // Count current enemies by type
-            const currentCounts = {};
-            this.enemies.forEach(enemy => {
-                currentCounts[enemy.type] = (currentCounts[enemy.type] || 0) + 1;
-            });
+            // Generate random threat rating between min and max
+            let threatRating;
+            do {
+                threatRating = Math.round(this.minThreat + Math.random() * (this.maxThreat - this.minThreat));
+            } while (threatRating === 0); // Reroll if we get 0
 
-            // Spawn missing enemies
-            wave.enemies.forEach(enemyType => {
-                const currentCount = currentCounts[enemyType.type] || 0;
-                if (currentCount < enemyType.count) {
-                    // Generate random position within valid spawn area
-                    const x = margin + Math.floor(Math.random() * spawnWidth);
-                    const y = margin + Math.floor(Math.random() * spawnHeight);
-                    
-                    if (x >= 0 && x < mapWidth && y >= 0 && y < mapHeight) {
-                        this.enemies.push(new Enemy(x, y, enemyType.type));
-                    }
-                }
-            });
+            // Get random enemy type for this threat rating
+            const enemyType = Enemy.getRandomEnemyTypeByThreat(threatRating);
+
+            // Generate random position within valid spawn area
+            const x = margin + Math.floor(Math.random() * spawnWidth);
+            const y = margin + Math.floor(Math.random() * spawnHeight);
+            
+            if (x >= 0 && x < mapWidth && y >= 0 && y < mapHeight) {
+                this.enemies.push(new Enemy(x, y, enemyType));
+            }
 
             this.lastEnemySpawn = now;
         }

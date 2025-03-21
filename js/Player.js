@@ -9,6 +9,7 @@ class Player extends GameObject {
         this.immunityDuration = 2000; // 2 seconds
         this.lastHealthGainTime = 0;
         this.healthGainInterval = 90000; // 90 seconds
+        this.hasHealthRegen = false; // New property for health regen upgrade
         this.aimLineLength = 50; // Length of the aiming line
         
         // Movement
@@ -21,7 +22,7 @@ class Player extends GameObject {
 
         // Initialize weapons with only 2 slots
         this.weapons = [
-            new Weapon('pistol'),  // First slot
+            new Weapon('submachinegun'),  // First slot
             new Weapon('shotgun')   // Second slot
         ];
         
@@ -34,7 +35,7 @@ class Player extends GameObject {
         this.fireRateMultiplier = 1;
         this.pickupRange = 100;
         this.pickupRangeMultiplier = 1;
-        this.hasCritical = true;
+        this.hasCritical = false;
         this.criticalChance = 0.1; // 10%
         this.criticalDamageMultiplier = 2;
         this.shields = 0;
@@ -91,9 +92,9 @@ class Player extends GameObject {
             this.immunityFlashAlpha = 0;
         }
 
-        // Check for health gain
+        // Check for health gain only if player has the health regen upgrade
         const now = Date.now();
-        if (now - this.lastHealthGainTime >= this.healthGainInterval) {
+        if (this.hasHealthRegen && now - this.lastHealthGainTime >= this.healthGainInterval) {
             if (this.health < this.maxHealth) {
                 this.health++;
             }
