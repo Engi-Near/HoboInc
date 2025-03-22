@@ -23,9 +23,21 @@ let maxDots = 50000; // Increased maximum number of dots due to higher rate
 let dotGeometry; // Reusable geometry for dots
 let dotLifetime = 30; // Dot lifetime in seconds
 
+// Audio variables
+let audioListener;
+let electricalHumSound;
+let lunasiaSound;
+let footstepSound;
+let waterDripSound;
+let isMoving = false;
+let lastFootstepTime = 0;
+let footstepInterval = 400; // ms between footstep sounds
+
 // Game state variables
-let gameState = "LOADING"; // LOADING, PLAYING, GAME_OVER
+let gameState = "LOADING"; // LOADING, PLAYING, PAUSED, GAME_OVER
 let gameStartTime = 0;
+let totalGameTime = 0; // Track total game time
+let pauseStartTime = 0; // Track when the game was paused
 let enemy = null;
 let subtitle = null;
 let subtitleTimeout = null;
@@ -39,6 +51,10 @@ function init() {
     // Create camera
     camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
     camera.position.y = 1.7; // Eye level height
+    
+    // Initialize audio listener and attach to camera
+    audioListener = new THREE.AudioListener();
+    camera.add(audioListener);
     
     // Create renderer with optimizations
     renderer = new THREE.WebGLRenderer({ 
@@ -83,11 +99,73 @@ function init() {
     // Create reusable geometry for dots - much smaller for tiny LED look
     dotGeometry = new THREE.SphereGeometry(0.003, 8, 8);
     
+    // Load audio files
+    loadAudioFiles();
+    
     // Create loading screen before initializing the game
     createLoadingScreen();
     
     // Start animation loop
     animate();
+}
+
+// Load all audio files
+function loadAudioFiles() {
+    // Load electrical hum sound for scanner
+    electricalHumSound = new THREE.Audio(audioListener);
+    const electricalHumLoader = new THREE.AudioLoader();
+    electricalHumLoader.load('Lunasia/electrical hum.mp3', function(buffer) {
+        electricalHumSound.setBuffer(buffer);
+        electricalHumSound.setLoop(true);
+        electricalHumSound.setVolume(0.5);
+    });
+    
+    // Load lunasia sound for enemy contacts
+    lunasiaSound = new THREE.Audio(audioListener);
+    const lunasiaLoader = new THREE.AudioLoader();
+    lunasiaLoader.load('Lunasia/lunasia.mp3', function(buffer) {
+        lunasiaSound.setBuffer(buffer);
+        lunasiaSound.setLoop(false);
+        lunasiaSound.setVolume(0.7);
+    });
+    
+    // Load footstep sound for movement
+    footstepSound = new THREE.Audio(audioListener);
+    const footstepLoader = new THREE.AudioLoader();
+    footstepLoader.load('Lunasia/skkfootsteps.mp3', function(buffer) {
+        footstepSound.setBuffer(buffer);
+        footstepSound.setLoop(false);
+        footstepSound.setVolume(0.4);
+    });
+    
+    // Load ambient water drip sound
+    waterDripSound = new THREE.Audio(audioListener);
+    const waterDripLoader = new THREE.AudioLoader();
+    waterDripLoader.load('Lunasia/water_drip.mp3', function(buffer) {
+        waterDripSound.setBuffer(buffer);
+        waterDripSound.setLoop(true);
+        waterDripSound.setVolume(0.3);
+        // Start playing ambient sound immediately after loading
+        if (gameState === "PLAYING") {
+            waterDripSound.play();
+        }
+    });
+}
+
+// Handle audio for game pause/resume
+function handleAudioOnPause(isPaused) {
+    if (isPaused) {
+        // Pause all sounds when game is paused
+        if (electricalHumSound && electricalHumSound.isPlaying) electricalHumSound.pause();
+        if (waterDripSound && waterDripSound.isPlaying) waterDripSound.pause();
+    } else {
+        // Resume ambient sounds when game is resumed
+        if (waterDripSound && waterDripSound.buffer && !waterDripSound.isPlaying) waterDripSound.play();
+        // Only resume electrical hum if still clicking
+        if (isClicking && electricalHumSound && electricalHumSound.buffer && !electricalHumSound.isPlaying) {
+            electricalHumSound.play();
+        }
+    }
 }
 
 // Handle pointer lock change event
@@ -97,13 +175,32 @@ function handlePointerLockChange() {
     if (document.pointerLockElement === renderer.domElement) {
         console.log("Pointer locked");
         hideLoadingScreen();
+        
         if (gameState === "LOADING") {
             startGame();
+        } else if (gameState === "PAUSED") {
+            // Resume game - calculate paused duration and adjust game time
+            const pauseDuration = performance.now() - pauseStartTime;
+            gameStartTime += pauseDuration; // Adjust game start time to account for pause
+            
+            // Resume any scheduled events here if needed
+            
+            gameState = "PLAYING";
+            hidePauseScreen();
+            
+            // Resume audio
+            handleAudioOnPause(false);
         }
     } else {
         console.log("Pointer unlocked");
         if (gameState === "PLAYING") {
+            // Pause game
+            pauseStartTime = performance.now();
+            gameState = "PAUSED";
             showPauseScreen();
+            
+            // Pause audio
+            handleAudioOnPause(true);
         }
     }
 }
@@ -304,6 +401,15 @@ function showPauseScreen() {
     pauseText.style.color = 'white';
     pauseText.style.marginBottom = '1em';
     
+    // Show game time in the pause screen
+    const gameTimeText = document.createElement('div');
+    const elapsedSeconds = Math.floor((performance.now() - gameStartTime) / 1000);
+    const minutes = Math.floor(elapsedSeconds / 60);
+    const seconds = elapsedSeconds % 60;
+    gameTimeText.textContent = `Time: ${minutes}:${seconds.toString().padStart(2, '0')}`;
+    gameTimeText.style.color = 'white';
+    gameTimeText.style.marginBottom = '2em';
+    
     const resumeButton = document.createElement('button');
     resumeButton.textContent = 'Resume';
     resumeButton.style.padding = '0.5em 1em';
@@ -315,6 +421,7 @@ function showPauseScreen() {
     });
     
     pauseScreen.appendChild(pauseText);
+    pauseScreen.appendChild(gameTimeText);
     pauseScreen.appendChild(resumeButton);
     pauseScreen.id = 'pause-screen';
     document.body.appendChild(pauseScreen);
@@ -345,6 +452,7 @@ function startGame() {
     console.log("Starting game");
     gameState = "PLAYING";
     gameStartTime = performance.now();
+    totalGameTime = 0;
     
     // Create the map
     createMap();
@@ -352,11 +460,17 @@ function startGame() {
     // Create the box in hand
     createHandBox();
     
+    // Start ambient sound
+    if (waterDripSound && waterDripSound.buffer && !waterDripSound.isPlaying) {
+        waterDripSound.play();
+    }
+    
     // Show initial message
     showSubtitle("Hello Commander. I was bored, and wanted to play a game with you. Why don't you get yourself acquainted. Look around a little.", 10000);
     
     // Schedule the second message and enemy spawn after 60 seconds
     setTimeout(() => {
+        // Only proceed if game is still playing (not paused or game over)
         if (gameState === "PLAYING") {
             showSubtitle("Aww, you look cute down there, getting your bearings. Why don't I join you?", 5000);
             setTimeout(() => {
@@ -488,12 +602,22 @@ function onMouseDown(event) {
         isClicking = true;
         // Directly project a ray rather than starting an interval
         projectRay();
+        
+        // Play electrical hum sound when scanner is active
+        if (electricalHumSound && electricalHumSound.buffer && !electricalHumSound.isPlaying) {
+            electricalHumSound.play();
+        }
     }
 }
 
 // Handle mouse up event - stop projecting rays
 function onMouseUp(event) {
     isClicking = false;
+    
+    // Stop electrical hum sound when scanner is inactive
+    if (electricalHumSound && electricalHumSound.isPlaying) {
+        electricalHumSound.stop();
+    }
 }
 
 // Project a ray with random 75-degree offset
@@ -562,6 +686,11 @@ function createDot(position, materialType) {
     // Red for enemy, blue for concrete
     if (materialType === "enemy") {
         color = new THREE.Color(0xff0000); // Red for enemy
+        
+        // Play lunasia sound when dot contacts enemy
+        if (lunasiaSound && lunasiaSound.buffer && !lunasiaSound.isPlaying) {
+            lunasiaSound.play();
+        }
     } else {
         color = new THREE.Color(0x6fc0ff); // Blue for concrete
     }
@@ -924,6 +1053,9 @@ function animate() {
     
     // Only process game logic if in PLAYING state
     if (gameState === "PLAYING") {
+        // Calculate and store the current game time
+        totalGameTime = time - gameStartTime;
+        
         // Project rays in the animation loop instead of using intervals
         if (isClicking) {
             projectRay();
@@ -944,12 +1076,28 @@ function animate() {
         direction.x = Number(moveRight) - Number(moveLeft);
         direction.normalize();
         
+        // Check if player is moving
+        const wasMoving = isMoving;
+        isMoving = moveForward || moveBackward || moveLeft || moveRight;
+        
+        // Handle footstep sounds
+        if (isMoving) {
+            // Play footstep sound at intervals
+            if (time - lastFootstepTime > footstepInterval) {
+                playFootstepSound();
+                lastFootstepTime = time;
+            }
+        }
+        
         // Apply smoother movement acceleration/deceleration
         const baseSpeed = 2.5; // Base movement speed
         const sprintMultiplier = sprint ? 2.0 : 1.0; // Sprint doubles the speed
         const speed = baseSpeed * sprintMultiplier;
         const acceleration = 10.0;
         const friction = 10.0;
+        
+        // Adjust footstep interval based on sprint
+        footstepInterval = sprint ? 250 : 400;
         
         // Smoother acceleration for forward/backward
         if (moveForward || moveBackward) {
@@ -1004,6 +1152,20 @@ function animate() {
     prevTime = time;
     
     renderer.render(scene, camera);
+}
+
+// Play footstep sound
+function playFootstepSound() {
+    if (footstepSound && footstepSound.buffer && !footstepSound.isPlaying) {
+        // Clone the audio to allow overlapping footstep sounds
+        const footstep = footstepSound.clone();
+        footstep.play();
+        
+        // Clean up after playing to avoid memory leaks
+        footstep.onEnded = function() {
+            footstep.disconnect();
+        };
+    }
 }
 
 // Create a rectangular enemy entity
@@ -1072,6 +1234,13 @@ function gameOver() {
     console.log("Game Over!");
     gameState = "GAME_OVER";
     controls.unlock();
+    
+    // Stop all sounds
+    if (electricalHumSound && electricalHumSound.isPlaying) electricalHumSound.stop();
+    if (lunasiaSound && lunasiaSound.isPlaying) lunasiaSound.stop();
+    if (footstepSound && footstepSound.isPlaying) footstepSound.stop();
+    if (waterDripSound && waterDripSound.isPlaying) waterDripSound.stop();
+    
     showGameOverScreen();
 }
 
