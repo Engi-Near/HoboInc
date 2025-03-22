@@ -24,7 +24,9 @@ let dotGeometry; // Reusable geometry for dots
 let dotLifetime = 30; // Dot lifetime in seconds
 
 // Audio variables
-let audioListener;
+let audioListener = null;
+let audioContext = null;
+let audioInitialized = false; // Flag to track if audio is initialized
 let electricalHumSound;
 let lunasiaSound;
 let footstepSound;
@@ -51,10 +53,6 @@ function init() {
     // Create camera
     camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
     camera.position.y = 1.7; // Eye level height
-    
-    // Initialize audio listener and attach to camera
-    audioListener = new THREE.AudioListener();
-    camera.add(audioListener);
     
     // Create renderer with optimizations
     renderer = new THREE.WebGLRenderer({ 
@@ -99,9 +97,6 @@ function init() {
     // Create reusable geometry for dots - much smaller for tiny LED look
     dotGeometry = new THREE.SphereGeometry(0.003, 8, 8);
     
-    // Load audio files
-    loadAudioFiles();
-    
     // Create loading screen before initializing the game
     createLoadingScreen();
     
@@ -109,8 +104,40 @@ function init() {
     animate();
 }
 
+// Initialize audio system - call this after user interaction
+function initAudio() {
+    if (audioInitialized) return;
+    
+    console.log("Initializing audio system");
+    
+    try {
+        // Initialize the audio listener only after user interaction
+        audioListener = new THREE.AudioListener();
+        camera.add(audioListener);
+        
+        // Check if the audio context is created successfully
+        if (audioListener.context) {
+            audioContext = audioListener.context;
+            audioInitialized = true;
+            
+            // Load audio files now that the context is initialized
+            loadAudioFiles();
+            console.log("Audio system initialized successfully");
+        } else {
+            console.error("Failed to get audio context from listener");
+        }
+    } catch (e) {
+        console.error("Error initializing audio:", e);
+    }
+}
+
 // Load all audio files
 function loadAudioFiles() {
+    if (!audioInitialized) {
+        console.warn("Cannot load audio files - audio system not initialized");
+        return;
+    }
+    
     // Load electrical hum sound for scanner
     electricalHumSound = new THREE.Audio(audioListener);
     const electricalHumLoader = new THREE.AudioLoader();
@@ -154,6 +181,8 @@ function loadAudioFiles() {
 
 // Handle audio for game pause/resume
 function handleAudioOnPause(isPaused) {
+    if (!audioInitialized) return;
+    
     if (isPaused) {
         // Pause all sounds when game is paused
         if (electricalHumSound && electricalHumSound.isPlaying) electricalHumSound.pause();
@@ -175,6 +204,9 @@ function handlePointerLockChange() {
     if (document.pointerLockElement === renderer.domElement) {
         console.log("Pointer locked");
         hideLoadingScreen();
+        
+        // Initialize audio after user interaction (pointer lock)
+        initAudio();
         
         if (gameState === "LOADING") {
             startGame();
@@ -474,8 +506,8 @@ function startGame() {
     // Create the box in hand
     createHandBox();
     
-    // Start ambient sound
-    if (waterDripSound && waterDripSound.buffer && !waterDripSound.isPlaying) {
+    // Start ambient sound if audio is initialized
+    if (audioInitialized && waterDripSound && waterDripSound.buffer && !waterDripSound.isPlaying) {
         waterDripSound.play();
     }
     
@@ -618,7 +650,7 @@ function onMouseDown(event) {
         projectRay();
         
         // Play electrical hum sound when scanner is active
-        if (electricalHumSound && electricalHumSound.buffer && !electricalHumSound.isPlaying) {
+        if (audioInitialized && electricalHumSound && electricalHumSound.buffer && !electricalHumSound.isPlaying) {
             electricalHumSound.play();
         }
     }
@@ -629,7 +661,7 @@ function onMouseUp(event) {
     isClicking = false;
     
     // Stop electrical hum sound when scanner is inactive
-    if (electricalHumSound && electricalHumSound.isPlaying) {
+    if (audioInitialized && electricalHumSound && electricalHumSound.isPlaying) {
         electricalHumSound.stop();
     }
 }
@@ -702,7 +734,7 @@ function createDot(position, materialType) {
         color = new THREE.Color(0xff0000); // Red for enemy
         
         // Play lunasia sound when dot contacts enemy
-        if (lunasiaSound && lunasiaSound.buffer && !lunasiaSound.isPlaying) {
+        if (audioInitialized && lunasiaSound && lunasiaSound.buffer && !lunasiaSound.isPlaying) {
             lunasiaSound.play();
         }
     } else {
@@ -1088,10 +1120,42 @@ function animate() {
         camera.position.y = 1.7;
         velocity.y = 0;
         
-        // Calculate movement direction based on camera rotation
-        direction.z = Number(moveForward) - Number(moveBackward);
-        direction.x = Number(moveRight) - Number(moveLeft);
-        direction.normalize();
+        // Calculate movement direction based on camera rotation and input
+        direction.x = 0;
+        direction.z = 0;
+        
+        if (moveForward) direction.z = -1;
+        if (moveBackward) direction.z = 1;
+        if (moveLeft) direction.x = -1;
+        if (moveRight) direction.x = 1;
+        
+        // Normalize direction vector to ensure consistent speed in all directions
+        if (direction.x !== 0 || direction.z !== 0) {
+            direction.normalize();
+        }
+        
+        // Apply camera rotation to direction vector
+        if (direction.x !== 0 || direction.z !== 0) {
+            // Get camera direction
+            const cameraDirection = new THREE.Vector3(0, 0, -1);
+            cameraDirection.applyQuaternion(camera.quaternion);
+            cameraDirection.y = 0;
+            cameraDirection.normalize();
+            
+            // Get right vector (perpendicular to forward vector)
+            const rightVector = new THREE.Vector3(1, 0, 0);
+            rightVector.applyQuaternion(camera.quaternion);
+            rightVector.y = 0;
+            rightVector.normalize();
+            
+            // Calculate movement vector based on camera orientation
+            const moveX = direction.x * rightVector.x + direction.z * cameraDirection.x;
+            const moveZ = direction.x * rightVector.z + direction.z * cameraDirection.z;
+            
+            direction.x = moveX;
+            direction.z = moveZ;
+            direction.normalize();
+        }
         
         // Check if player is moving
         const wasMoving = isMoving;
@@ -1116,28 +1180,18 @@ function animate() {
         // Adjust footstep interval based on sprint
         footstepInterval = sprint ? 250 : 400;
         
-        // Smoother acceleration for forward/backward
-        if (moveForward || moveBackward) {
-            velocity.z = THREE.MathUtils.lerp(
-                velocity.z, 
-                direction.z * speed * delta, 
-                acceleration * delta
-            );
-        } else {
-            // Apply friction when not pressing movement keys
-            velocity.z = THREE.MathUtils.lerp(velocity.z, 0, friction * delta);
-        }
+        // Calculate target velocity
+        const targetVelocityX = direction.x * speed * delta;
+        const targetVelocityZ = direction.z * speed * delta;
         
-        // Smoother acceleration for left/right
-        if (moveLeft || moveRight) {
-            velocity.x = THREE.MathUtils.lerp(
-                velocity.x, 
-                direction.x * speed * delta, 
-                acceleration * delta
-            );
+        // Apply acceleration or friction
+        if (isMoving) {
+            velocity.x = THREE.MathUtils.lerp(velocity.x, targetVelocityX, acceleration * delta);
+            velocity.z = THREE.MathUtils.lerp(velocity.z, targetVelocityZ, acceleration * delta);
         } else {
             // Apply friction when not pressing movement keys
             velocity.x = THREE.MathUtils.lerp(velocity.x, 0, friction * delta);
+            velocity.z = THREE.MathUtils.lerp(velocity.z, 0, friction * delta);
         }
         
         // Update camera position based on velocity (with improved collision detection for sliding)
@@ -1145,11 +1199,9 @@ function animate() {
             // Store current position before movement
             const previousPosition = camera.position.clone();
             
-            // Move forward/backward
-            camera.translateZ(velocity.z);
-            
-            // Move left/right
-            camera.translateX(velocity.x);
+            // Apply velocity directly instead of using translateX/Z to avoid orientation issues
+            camera.position.x += velocity.x;
+            camera.position.z += velocity.z;
             
             // Check for collisions and apply sliding behavior
             const adjustedPosition = checkWallCollisions(
@@ -1173,6 +1225,8 @@ function animate() {
 
 // Play footstep sound
 function playFootstepSound() {
+    if (!audioInitialized) return;
+    
     if (footstepSound && footstepSound.buffer && !footstepSound.isPlaying) {
         // Clone the audio to allow overlapping footstep sounds
         const footstep = footstepSound.clone();
@@ -1253,10 +1307,12 @@ function gameOver() {
     controls.unlock();
     
     // Stop all sounds
-    if (electricalHumSound && electricalHumSound.isPlaying) electricalHumSound.stop();
-    if (lunasiaSound && lunasiaSound.isPlaying) lunasiaSound.stop();
-    if (footstepSound && footstepSound.isPlaying) footstepSound.stop();
-    if (waterDripSound && waterDripSound.isPlaying) waterDripSound.stop();
+    if (audioInitialized) {
+        if (electricalHumSound && electricalHumSound.isPlaying) electricalHumSound.stop();
+        if (lunasiaSound && lunasiaSound.isPlaying) lunasiaSound.stop();
+        if (footstepSound && footstepSound.isPlaying) footstepSound.stop();
+        if (waterDripSound && waterDripSound.isPlaying) waterDripSound.stop();
+    }
     
     showGameOverScreen();
 }
