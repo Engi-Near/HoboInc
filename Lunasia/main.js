@@ -141,7 +141,7 @@ function loadAudioFiles() {
     // Load electrical hum sound for scanner
     electricalHumSound = new THREE.Audio(audioListener);
     const electricalHumLoader = new THREE.AudioLoader();
-    electricalHumLoader.load('Lunasia/electrical hum.mp3', function(buffer) {
+    electricalHumLoader.load('electrical hum.mp3', function(buffer) {
         electricalHumSound.setBuffer(buffer);
         electricalHumSound.setLoop(true);
         electricalHumSound.setVolume(0.5);
@@ -150,7 +150,7 @@ function loadAudioFiles() {
     // Load lunasia sound for enemy contacts
     lunasiaSound = new THREE.Audio(audioListener);
     const lunasiaLoader = new THREE.AudioLoader();
-    lunasiaLoader.load('Lunasia/lunasia.mp3', function(buffer) {
+    lunasiaLoader.load('lunasia.mp3', function(buffer) {
         lunasiaSound.setBuffer(buffer);
         lunasiaSound.setLoop(false);
         lunasiaSound.setVolume(0.7);
@@ -159,7 +159,7 @@ function loadAudioFiles() {
     // Load footstep sound for movement
     footstepSound = new THREE.Audio(audioListener);
     const footstepLoader = new THREE.AudioLoader();
-    footstepLoader.load('Lunasia/skkfootsteps.mp3', function(buffer) {
+    footstepLoader.load('skkfootsteps.mp3', function(buffer) {
         footstepSound.setBuffer(buffer);
         footstepSound.setLoop(false);
         footstepSound.setVolume(0.4);
@@ -168,7 +168,7 @@ function loadAudioFiles() {
     // Load ambient water drip sound
     waterDripSound = new THREE.Audio(audioListener);
     const waterDripLoader = new THREE.AudioLoader();
-    waterDripLoader.load('Lunasia/water_drip.mp3', function(buffer) {
+    waterDripLoader.load('water_drip.mp3', function(buffer) {
         waterDripSound.setBuffer(buffer);
         waterDripSound.setLoop(true);
         waterDripSound.setVolume(0.3);
