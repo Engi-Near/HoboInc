@@ -670,7 +670,7 @@ function onMouseUp(event) {
 function projectRay() {
     // Only project a ray if we're clicking and at the correct interval and game is playing
     const currentTime = performance.now();
-    if (gameState !== "PLAYING" || !isClicking || (currentTime - lastRayTime < 4)) {
+    if (gameState !== "PLAYING" || !isClicking || (currentTime - lastRayTime < 1)) {
         return;
     }
     
