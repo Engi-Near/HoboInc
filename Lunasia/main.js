@@ -141,7 +141,7 @@ function loadAudioFiles() {
     // Load electrical hum sound for scanner
     electricalHumSound = new THREE.Audio(audioListener);
     const electricalHumLoader = new THREE.AudioLoader();
-    electricalHumLoader.load('electrical hum.mp3', function(buffer) {
+    electricalHumLoader.load('Lunasia/electrical hum.mp3', function(buffer) {
         electricalHumSound.setBuffer(buffer);
         electricalHumSound.setLoop(true);
         electricalHumSound.setVolume(0.5);
@@ -150,7 +150,7 @@ function loadAudioFiles() {
     // Load lunasia sound for enemy contacts
     lunasiaSound = new THREE.Audio(audioListener);
     const lunasiaLoader = new THREE.AudioLoader();
-    lunasiaLoader.load('lunasia.mp3', function(buffer) {
+    lunasiaLoader.load('Lunasia/lunasia.mp3', function(buffer) {
         lunasiaSound.setBuffer(buffer);
         lunasiaSound.setLoop(false);
         lunasiaSound.setVolume(0.7);
@@ -159,7 +159,7 @@ function loadAudioFiles() {
     // Load footstep sound for movement
     footstepSound = new THREE.Audio(audioListener);
     const footstepLoader = new THREE.AudioLoader();
-    footstepLoader.load('skkfootsteps.mp3', function(buffer) {
+    footstepLoader.load('Lunasia/skkfootsteps.mp3', function(buffer) {
         footstepSound.setBuffer(buffer);
         footstepSound.setLoop(false);
         footstepSound.setVolume(0.4);
@@ -168,7 +168,7 @@ function loadAudioFiles() {
     // Load ambient water drip sound
     waterDripSound = new THREE.Audio(audioListener);
     const waterDripLoader = new THREE.AudioLoader();
-    waterDripLoader.load('water_drip.mp3', function(buffer) {
+    waterDripLoader.load('Lunasia/water_drip.mp3', function(buffer) {
         waterDripSound.setBuffer(buffer);
         waterDripSound.setLoop(true);
         waterDripSound.setVolume(0.3);
@@ -1227,15 +1227,30 @@ function animate() {
 function playFootstepSound() {
     if (!audioInitialized) return;
     
-    if (footstepSound && footstepSound.buffer && !footstepSound.isPlaying) {
-        // Clone the audio to allow overlapping footstep sounds
-        const footstep = footstepSound.clone();
-        footstep.play();
-        
-        // Clean up after playing to avoid memory leaks
-        footstep.onEnded = function() {
-            footstep.disconnect();
-        };
+    try {
+        // Make sure we have a valid audio object with buffer
+        if (footstepSound && footstepSound.buffer) {
+            // First check if the audio is already playing
+            if (footstepSound.isPlaying) {
+                // If already playing, we'll just skip this footstep
+                return;
+            }
+            
+            // Try playing the original footstep sound directly instead of cloning
+            // This is safer for GitHub Pages where audio context might be restricted
+            footstepSound.play();
+            
+            // Set a timeout to artificially end the sound earlier
+            // This allows multiple footsteps without needing to clone
+            setTimeout(() => {
+                if (footstepSound && footstepSound.isPlaying) {
+                    footstepSound.stop();
+                }
+            }, 100); // Short duration to allow for rapid footsteps
+        }
+    } catch (error) {
+        console.warn("Error playing footstep sound:", error);
+        // Fail silently - footsteps are not critical for gameplay
     }
 }
 
