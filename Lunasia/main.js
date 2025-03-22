@@ -183,6 +183,13 @@ function handlePointerLockChange() {
             const pauseDuration = performance.now() - pauseStartTime;
             gameStartTime += pauseDuration; // Adjust game start time to account for pause
             
+            // Reset movement flags when resuming from pause
+            moveForward = false;
+            moveBackward = false;
+            moveLeft = false;
+            moveRight = false;
+            sprint = false;
+            
             // Resume any scheduled events here if needed
             
             gameState = "PLAYING";
@@ -453,6 +460,13 @@ function startGame() {
     gameState = "PLAYING";
     gameStartTime = performance.now();
     totalGameTime = 0;
+    
+    // Reset all movement flags
+    moveForward = false;
+    moveBackward = false;
+    moveLeft = false;
+    moveRight = false;
+    sprint = false;
     
     // Create the map
     createMap();
@@ -1016,6 +1030,9 @@ function onKeyDown(event) {
 }
 
 function onKeyUp(event) {
+    // Add check to only process key up events during gameplay
+    if (gameState !== "PLAYING") return;
+    
     switch (event.code) {
         case 'KeyW': // SWAPPED: Now moves backward
             moveBackward = false;
