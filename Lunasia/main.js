@@ -624,9 +624,9 @@ function createHandBox() {
     handBox = new THREE.LineSegments(
         edges,
         new THREE.LineBasicMaterial({ 
-            color: 0xffffff,
-            opacity: 0.0,      // Make completely invisible
-            transparent: true  // Enable transparency
+            color: 0x000000, // Pure black
+            opacity: 0.0,
+            transparent: true
         })
     );
     
@@ -675,15 +675,13 @@ function createMap() {
     const mapHeight = mapLayout.length;
     const cellSize = 1; // 1 meter per cell
     
-    // Create floor with invisible but physically raycastable material
+    // Create floor with completely black material
     const floorGeometry = new THREE.PlaneGeometry(mapWidth * cellSize, mapHeight * cellSize);
-    const floorMaterial = new THREE.MeshStandardMaterial({ 
-        color: 0xcccccc, // Light gray floor (only visible when scanned)
-        roughness: 0.8,
-        metalness: 0.2,
-        side: THREE.DoubleSide,
-        opacity: 0.0,     // Make completely invisible
-        transparent: true // Enable transparency
+    const floorMaterial = new THREE.MeshBasicMaterial({ 
+        color: 0x000000, // Pure black
+        opacity: 0.0,
+        transparent: true,
+        side: THREE.DoubleSide
     });
     floor = new THREE.Mesh(floorGeometry, floorMaterial);
     floor.rotation.x = -Math.PI / 2;
@@ -691,19 +689,17 @@ function createMap() {
     floor.userData.material = "concrete"; // Tag as concrete material for raycasting
     scene.add(floor);
     
-    // Add a grid helper for visualization - make it invisible
+    // Add a grid helper but make it invisible
     const gridHelper = new THREE.GridHelper(mapWidth * cellSize, mapWidth);
-    gridHelper.position.y = 0.01; // Slightly above floor to avoid z-fighting
+    gridHelper.position.y = 0.01;
     gridHelper.visible = false; // Make grid invisible
     scene.add(gridHelper);
     
-    // Wall material - completely invisible except when scanned
-    const wallMaterial = new THREE.MeshStandardMaterial({ 
-        color: 0x808080, // Gray color for walls (only visible when scanned)
-        roughness: 0.7,
-        metalness: 0.2,
-        opacity: 0.0, // Make walls completely invisible
-        transparent: true, // Enable transparency
+    // Wall material - completely black
+    const wallMaterial = new THREE.MeshBasicMaterial({ 
+        color: 0x000000, // Pure black
+        opacity: 1.0, // Make walls opaque
+        transparent: true,
         side: THREE.DoubleSide
     });
     
@@ -756,12 +752,12 @@ function createMap() {
         wallMaterial
     );
     
-    // Create a roof over the entire map - invisible but raycastable
+    // Create a roof over the entire map - completely black
     const roofGeometry = new THREE.PlaneGeometry(mapWidth * cellSize, mapHeight * cellSize);
     const roofMaterial = new THREE.MeshBasicMaterial({ 
-        color: 0x000000, // Black ceiling (only visible when scanned)
+        color: 0x000000, // Pure black
         transparent: true,
-        opacity: 0.0, // Make it completely invisible
+        opacity: 0.0,
         side: THREE.DoubleSide
     });
     roof = new THREE.Mesh(roofGeometry, roofMaterial);
@@ -1306,8 +1302,44 @@ function projectRay() {
     const intersects = raycaster.intersectObjects(raycastObjects, true);
     
     if (intersects.length > 0 && intersects[0].distance <= maxDistance) {
-        // Create a dot at the intersection point
-        createDot(intersects[0].point, getMaterialType(intersects[0].object));
+        // Get the closest intersection
+        const hit = intersects[0];
+        
+        // Create a second raycaster from the player directly to the hit point to check occlusion
+        const hitDirection = hit.point.clone().sub(camera.position).normalize();
+        const occlusionRaycaster = new THREE.Raycaster(camera.position, hitDirection);
+        
+        // Set a small bias to avoid self-intersection
+        occlusionRaycaster.params.Line.threshold = 0.01;
+        
+        // Check for occlusion with walls only
+        const blockingObjects = walls;
+        const occlusionIntersects = occlusionRaycaster.intersectObjects(blockingObjects, true);
+        
+        // If there's a closer intersection than our hit point, it means the hit is occluded
+        let isOccluded = false;
+        
+        if (occlusionIntersects.length > 0) {
+            // Get distance to the hit point
+            const hitDistance = camera.position.distanceTo(hit.point);
+            
+            // If any object is closer than our hit point (with a small epsilon to account for floating point errors)
+            // then our hit point is occluded
+            const epsilon = 0.05; // Small tolerance value
+            for (const intersection of occlusionIntersects) {
+                if (intersection.distance < hitDistance - epsilon) {
+                    // This hit is occluded by a wall
+                    isOccluded = true;
+                    break;
+                }
+            }
+        }
+        
+        // Only create a dot if the hit point is not occluded
+        if (!isOccluded) {
+            // Create a dot at the intersection point
+            createDot(hit.point, getMaterialType(hit.object));
+        }
     }
 }
 
@@ -1580,14 +1612,12 @@ function createWall(x, z, size, height, material) {
 
 // Create a door piece
 function createDoor(x, z, size, height, material) {
-    // Create a door mesh - make it completely invisible until scanned
+    // Create a door mesh - make it completely black
     const doorGeometry = new THREE.BoxGeometry(size, height * 0.8, size * 0.3);
-    const doorMaterial = new THREE.MeshStandardMaterial({
-        color: 0x3D5A80, // Bluish color to distinguish from walls (only visible when scanned)
-        roughness: 0.7,
-        metalness: 0.3,
-        opacity: 0.0,      // Make completely invisible
-        transparent: true // Enable transparency
+    const doorMaterial = new THREE.MeshBasicMaterial({
+        color: 0x000000, // Pure black
+        opacity: 0.0,
+        transparent: true
     });
     
     const door = new THREE.Mesh(doorGeometry, doorMaterial);
@@ -1623,41 +1653,35 @@ function createDoor(x, z, size, height, material) {
 
 // Create a lever
 function createLever(x, z, size) {
-    // Create a platform for the lever - invisible until scanned
+    // Create a platform for the lever
     const platformGeometry = new THREE.BoxGeometry(0.25, 0.05, 0.25);
-    const platformMaterial = new THREE.MeshStandardMaterial({
-        color: 0x777777,
-        roughness: 0.5,
-        metalness: 0.5,
-        opacity: 0.0,      // Make completely invisible
-        transparent: true // Enable transparency
+    const platformMaterial = new THREE.MeshBasicMaterial({
+        color: 0x000000, // Pure black
+        opacity: 0.0,
+        transparent: true
     });
     
     const platform = new THREE.Mesh(platformGeometry, platformMaterial);
     platform.position.set(0, 0.025, 0); // Just above the floor
     
-    // Create the lever itself - invisible until scanned
+    // Create the lever itself
     const leverBaseGeometry = new THREE.CylinderGeometry(0.03, 0.03, 0.1, 8);
-    const leverBaseMaterial = new THREE.MeshStandardMaterial({
-        color: 0x444444,
-        roughness: 0.6,
-        metalness: 0.8,
-        opacity: 0.0,      // Make completely invisible
-        transparent: true // Enable transparency
+    const leverBaseMaterial = new THREE.MeshBasicMaterial({
+        color: 0x000000, // Pure black
+        opacity: 0.0,
+        transparent: true
     });
     
     const leverBase = new THREE.Mesh(leverBaseGeometry, leverBaseMaterial);
     leverBase.position.set(0, 0.075, 0); // On top of the platform
     platform.add(leverBase);
     
-    // Create the lever handle - invisible until scanned
+    // Create the lever handle
     const leverHandleGeometry = new THREE.CylinderGeometry(0.01, 0.01, 0.15, 8);
-    const leverHandleMaterial = new THREE.MeshStandardMaterial({
-        color: 0x333333,
-        roughness: 0.4,
-        metalness: 0.9,
-        opacity: 0.0,      // Make completely invisible
-        transparent: true // Enable transparency
+    const leverHandleMaterial = new THREE.MeshBasicMaterial({
+        color: 0x000000, // Pure black
+        opacity: 0.0,
+        transparent: true
     });
     
     const leverHandle = new THREE.Mesh(leverHandleGeometry, leverHandleMaterial);
@@ -2042,10 +2066,8 @@ function createEnemy() {
     
     // Create a simple box geometry for the enemy but make it invisible
     const geometry = new THREE.BoxGeometry(width, height, depth);
-    const material = new THREE.MeshStandardMaterial({
-        color: 0xff0000,  // Bright red color (only visible when scanned)
-        roughness: 0.5,
-        metalness: 0.2,
+    const material = new THREE.MeshBasicMaterial({
+        color: 0x000000,  // Pure black
         opacity: 0.0,     // Make completely invisible
         transparent: true // Enable transparency
     });
