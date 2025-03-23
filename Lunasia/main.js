@@ -44,11 +44,50 @@ let enemy = null;
 let subtitle = null;
 let subtitleTimeout = null;
 
+// Add these new variables at the top of the file with the other global variables
+let navigationGrid = []; // Grid representation of the map for pathfinding
+let waypoints = []; // Waypoints at strategic locations (corners)
+let currentPath = []; // Current path that the enemy is following
+let pathUpdateTime = 0; // Time tracking for path updates
+let pathUpdateInterval = 1000; // Update path every 1 second
+let gridCellSize = 1; // Size of each grid cell (same as our map cell size)
+let lastEnemyPosition = new THREE.Vector3(); // Last recorded enemy position
+let lastEnemyMoveTime = 0; // Time of last enemy movement
+let stuckCheckInterval = 100; // Time in ms to check if enemy is stuck
+
+// Add this new global variable for the waypoint connectivity
+let waypointConnections = {}; // Map of waypoint IDs to arrays of connected waypoint IDs
+
+// Add these performance-related variables at the top of the file with other global variables
+let pathfindingCache = {}; // Cache for common paths to avoid recalculation
+let maxPathfindingIterations = 500; // Limit iterations to prevent excessive calculations
+let pathSimplificationThreshold = 2.0; // Distance threshold for simplifying paths
+
+// Add variables for doors and levers
+let doors = []; // Array to store door objects
+let levers = []; // Array to store lever objects
+let leverActivationProgress = 0; // Progress of current lever activation (0-100%)
+let activeLever = null; // Reference to the lever currently being activated
+let leverActivationStartTime = 0; // Time when lever activation started
+let doorActivated = false; // Whether all doors have been activated
+let leverKeyPressed = false; // Whether the F key is currently pressed
+let requiredLeverHoldTime = 5000; // Time in ms required to hold the F key to activate a lever
+
+// Add variables for door escape activation
+let activeDoor = null; // Reference to the door currently being activated for escape
+let doorEscapeProgress = 0; // Progress of current door escape activation (0-100%)
+let doorEscapeStartTime = 0; // Time when door escape activation started
+let requiredDoorHoldTime = 10000; // Time in ms required to hold the F key to escape through a door
+
+// Add these dialogue-related variables at the top of the file with other global variables
+let scheduledDialogues = []; // Array to store scheduled dialogues with their timing
+let lastDialogueCheckTime = 0; // Last time we checked for dialogues to display
+
 // Initialize the scene
 function init() {
     // Create scene
     scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x000000); // Black background
+    scene.background = new THREE.Color(0x000000); // Change to black background
     
     // Create camera
     camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
@@ -65,9 +104,16 @@ function init() {
     
     document.body.appendChild(renderer.domElement);
     
-    // Add lights for white objects
-    const ambientLight = new THREE.AmbientLight(0xffffff, 1.0);
+    // Remove all lights to make the scene pitch black
+    // Keep the commented code for reference, but don't add any lights
+    /* 
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
     scene.add(ambientLight);
+    
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.5);
+    directionalLight.position.set(1, 1, 1);
+    scene.add(directionalLight);
+    */
     
     // Create pointer lock controls - using the global constructor
     controls = new PointerLockControls(camera, renderer.domElement);
@@ -492,6 +538,7 @@ function startGame() {
     gameState = "PLAYING";
     gameStartTime = performance.now();
     totalGameTime = 0;
+    lastDialogueCheckTime = 0;
     
     // Reset all movement flags
     moveForward = false;
@@ -511,21 +558,63 @@ function startGame() {
         waterDripSound.play();
     }
     
-    // Show initial message
-    showSubtitle("Hello Commander. I was bored, and wanted to play a game with you. Why don't you get yourself acquainted. Look around a little.", 10000);
+    // Clear any previously scheduled dialogues
+    scheduledDialogues = [];
     
-    // Schedule the second message and enemy spawn after 60 seconds
-    setTimeout(() => {
-        // Only proceed if game is still playing (not paused or game over)
-        if (gameState === "PLAYING") {
-            showSubtitle("Aww, you look cute down there, getting your bearings. Why don't I join you?", 5000);
-            setTimeout(() => {
-                if (gameState === "PLAYING") {
-                    createEnemy();
-                }
-            }, 2000);
+    // Schedule all dialogues based on game time
+    scheduleDialogue(0, "Hello Commander. I was bored, and wanted to play a game with you. Why don't you get yourself acquainted. Look around a little.");
+    scheduleDialogue(30, "Aww, you look cute down there, getting your bearings. Why don't I join you?");
+    scheduleDialogue(32, null, () => createEnemy()); // Spawn enemy at 32 seconds (2 seconds after dialogue)
+    scheduleDialogue(60, "Want out? There's a door, but its locked~");
+    scheduleDialogue(90, "You need to find some levers on the ground. They're a little small though, unlike you.");
+    scheduleDialogue(120, "Wondering how many there are? I'd tell you... if you give me a reward~");
+    scheduleDialogue(150, "Commander, aren't you struggling a little? Just stay still, and let me come to you.");
+    
+    // Show the first message immediately
+    showSubtitle(scheduledDialogues[0].message, 5000);
+}
+
+// Schedule a dialogue message at a specific game time
+function scheduleDialogue(timeInSeconds, message, callback = null) {
+    scheduledDialogues.push({
+        timeInSeconds: timeInSeconds,
+        message: message,
+        callback: callback,
+        triggered: timeInSeconds === 0 // Mark the first one as triggered since we show it immediately
+    });
+}
+
+// Check for dialogues that should be triggered based on game time
+function checkScheduledDialogues() {
+    if (gameState !== "PLAYING") return;
+    
+    // Calculate current game time in seconds
+    const currentGameTimeInSeconds = Math.floor(totalGameTime / 1000);
+    
+    // Don't check too frequently to avoid spamming
+    if (currentGameTimeInSeconds === lastDialogueCheckTime) return;
+    lastDialogueCheckTime = currentGameTimeInSeconds;
+    
+    // Check each scheduled dialogue
+    for (const dialogue of scheduledDialogues) {
+        // Skip already triggered dialogues
+        if (dialogue.triggered) continue;
+        
+        // Check if it's time to show this dialogue
+        if (currentGameTimeInSeconds >= dialogue.timeInSeconds) {
+            dialogue.triggered = true;
+            
+            // Show the dialogue message if there is one
+            if (dialogue.message) {
+                showSubtitle(dialogue.message, 5000);
+            }
+            
+            // Execute callback if provided
+            if (dialogue.callback) {
+                dialogue.callback();
+            }
         }
-    }, 60000);
+    }
 }
 
 // Create a white wireframe box in the player's right hand
@@ -534,7 +623,11 @@ function createHandBox() {
     const edges = new THREE.EdgesGeometry(boxGeometry);
     handBox = new THREE.LineSegments(
         edges,
-        new THREE.LineBasicMaterial({ color: 0xffffff })
+        new THREE.LineBasicMaterial({ 
+            color: 0xffffff,
+            opacity: 0.0,      // Make completely invisible
+            transparent: true  // Enable transparency
+        })
     );
     
     // Position the box to appear in the bottom right of the view
@@ -547,20 +640,34 @@ function createHandBox() {
 function createMap() {
     // Define the map layout where O is open space and # is a wall
     const mapLayout = [
-        "###############################################",
-        "#OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO#",
-        "#OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO#",
-        "#OOOOOO##OOOOOOOOOOOOOOOOOOOOOO##OOOOOOOOOOOOO#",
-        "#OOOOOO##OOOOOOOOOOOOOOOOOOOOOO##OOOOOOOOOOOOO#",
-        "#OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO#",
-        "#OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO#",
-        "#OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO#",
-        "#OOOOOOOOOOOOOOOOOOOOOOOOO##OOOOOOOOOOOOOOOOOO#",
-        "#OOOOOOOOOOOOOOOOOOOOOOOOO##OOOOOOOOOOOOOOOOOO#",
-        "#OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO#",
-        "#OOOOOOOOOOOOO##OOOOOOOOOOOOOOOOOOOOOOOOOOOOOO#",
-        "#OOOOOOOOOOOOO##OOOOOOOOOOOOOOOOOOOOOOOOOOOOOO#",
-        "###############################################"
+        "L........#............................................====..",
+        ".........#....##.....##.....##.....##.......................",
+        "..#...#..#....##.....##.....##.....##.......................",
+        "..#...#..#.........................................#######..",
+        "..#...#..#.........................................#........",
+        "...................................................#........",
+        "..............##.....##.....##.....##..............#........",
+        "##########....##.....##.....##.....##..............#........",
+        "...................................................#........",
+        "...................................................#........",
+        "..########.........................................#........",
+        ".........#....##.....##.....##.....##..............#..######",
+        ".........#....##.....##.....##.....##..............#........",
+        "#######..#.........................................#........",
+        ".........#.........................................#.......L",
+        "........L#.........................................#........",
+        "..########.........................................#........",
+        ".........#.........................................#........",
+        ".........#.........................................#..######",
+        "#######..#.........................................#........",
+        ".........#.........................................#........",
+        ".........#.........................................#........",
+        "..########.........................................#........",
+        "...................................................#........",
+        "...................................................#........",
+        "##########...#..########..#..#..########..#...#########...##",
+        ".............#............#..#............#.................",
+        "L............#............#.L#............#................."
     ];
     
     // Calculate map dimensions
@@ -570,10 +677,13 @@ function createMap() {
     
     // Create floor with invisible but physically raycastable material
     const floorGeometry = new THREE.PlaneGeometry(mapWidth * cellSize, mapHeight * cellSize);
-    const floorMaterial = new THREE.MeshBasicMaterial({ 
-        color: 0x000000, // Black floor
-        transparent: true,
-        opacity: 0.0 // Make it invisible
+    const floorMaterial = new THREE.MeshStandardMaterial({ 
+        color: 0xcccccc, // Light gray floor (only visible when scanned)
+        roughness: 0.8,
+        metalness: 0.2,
+        side: THREE.DoubleSide,
+        opacity: 0.0,     // Make completely invisible
+        transparent: true // Enable transparency
     });
     floor = new THREE.Mesh(floorGeometry, floorMaterial);
     floor.rotation.x = -Math.PI / 2;
@@ -581,13 +691,19 @@ function createMap() {
     floor.userData.material = "concrete"; // Tag as concrete material for raycasting
     scene.add(floor);
     
-    // Grid helper removed - no longer displaying grid
+    // Add a grid helper for visualization - make it invisible
+    const gridHelper = new THREE.GridHelper(mapWidth * cellSize, mapWidth);
+    gridHelper.position.y = 0.01; // Slightly above floor to avoid z-fighting
+    gridHelper.visible = false; // Make grid invisible
+    scene.add(gridHelper);
     
-    // Wall material - transparent but still physical
+    // Wall material - completely invisible except when scanned
     const wallMaterial = new THREE.MeshStandardMaterial({ 
-        color: 0xffffff,
-        transparent: true,
-        opacity: 0.0, // Completely invisible
+        color: 0x808080, // Gray color for walls (only visible when scanned)
+        roughness: 0.7,
+        metalness: 0.2,
+        opacity: 0.0, // Make walls completely invisible
+        transparent: true, // Enable transparency
         side: THREE.DoubleSide
     });
     
@@ -610,6 +726,22 @@ function createMap() {
                     wallHeight,
                     wallMaterial
                 );
+            } else if (mapLayout[z][x] === '=') {
+                // Create a door piece
+                createDoor(
+                    offsetX + x * cellSize,
+                    offsetZ + z * cellSize,
+                    cellSize,
+                    wallHeight,
+                    wallMaterial
+                );
+            } else if (mapLayout[z][x] === 'L') {
+                // Create a lever
+                createLever(
+                    offsetX + x * cellSize,
+                    offsetZ + z * cellSize,
+                    cellSize
+                );
             }
         }
     }
@@ -627,9 +759,9 @@ function createMap() {
     // Create a roof over the entire map - invisible but raycastable
     const roofGeometry = new THREE.PlaneGeometry(mapWidth * cellSize, mapHeight * cellSize);
     const roofMaterial = new THREE.MeshBasicMaterial({ 
-        color: 0x000000, // Black ceiling
+        color: 0x000000, // Black ceiling (only visible when scanned)
         transparent: true,
-        opacity: 0.0, // Make it invisible
+        opacity: 0.0, // Make it completely invisible
         side: THREE.DoubleSide
     });
     roof = new THREE.Mesh(roofGeometry, roofMaterial);
@@ -638,8 +770,474 @@ function createMap() {
     roof.userData.material = "concrete"; // Tag as concrete material for raycasting
     scene.add(roof);
     
-    // Set initial camera position in an open space
-    camera.position.set(offsetX + 2, 1.7, offsetZ + 2);
+    // Set initial camera position in an empty area of the map (middle right section)
+    camera.position.set(offsetX + 40, 1.7, offsetZ + 15);
+    
+    // Create the navigation grid for pathfinding
+    createNavigationGrid(mapLayout, offsetX, offsetZ, cellSize);
+    
+    // Generate waypoints at strategic locations (corners and corridors) for pathfinding heuristic
+    generateWaypoints(navigationGrid, offsetX, offsetZ, cellSize);
+}
+
+// Create a navigation grid based on the map layout for A* pathfinding
+function createNavigationGrid(mapLayout, offsetX, offsetZ, cellSize) {
+    const mapWidth = mapLayout[0].length;
+    const mapHeight = mapLayout.length;
+    
+    // Initialize the grid
+    navigationGrid = [];
+    
+    for (let z = 0; z < mapHeight; z++) {
+        navigationGrid[z] = [];
+        for (let x = 0; x < mapWidth; x++) {
+            // Mark walls as non-walkable, open spaces as walkable
+            // Updated to use '.' for walkable spaces and '#' for walls
+            navigationGrid[z][x] = {
+                walkable: mapLayout[z][x] !== '#',
+                worldX: offsetX + x * cellSize,
+                worldZ: offsetZ + z * cellSize,
+                x: x,
+                z: z,
+                f: 0, // f cost for A*
+                g: 0, // g cost for A*
+                h: 0, // h cost for A*
+                parent: null // parent node for path reconstruction
+            };
+        }
+    }
+    
+    console.log("Navigation grid created with dimensions: " + mapWidth + "x" + mapHeight);
+}
+
+// Generate waypoints at strategic locations (corners and corridors) for pathfinding heuristic
+function generateWaypoints(grid, offsetX, offsetZ, cellSize) {
+    waypoints = [];
+    waypointConnections = {}; // Reset connections
+    
+    // First pass: identify only exterior corners
+    for (let z = 1; z < grid.length - 1; z++) {
+        for (let x = 1; x < grid[z].length - 1; x++) {
+            // Only consider walkable cells
+            if (grid[z][x].walkable) {
+                // Check if it's an exterior corner - these are the key decision points
+                // An exterior corner is a walkable cell with two adjacent non-walkable cells that are diagonal from each other
+                
+                // Check for top-right exterior corner
+                const isTopRightExterior = 
+                    grid[z-1][x].walkable && grid[z][x+1].walkable && 
+                    !grid[z-1][x+1].walkable;
+                
+                // Check for top-left exterior corner
+                const isTopLeftExterior = 
+                    grid[z-1][x].walkable && grid[z][x-1].walkable && 
+                    !grid[z-1][x-1].walkable;
+                
+                // Check for bottom-right exterior corner
+                const isBottomRightExterior = 
+                    grid[z+1][x].walkable && grid[z][x+1].walkable && 
+                    !grid[z+1][x+1].walkable;
+                
+                // Check for bottom-left exterior corner
+                const isBottomLeftExterior = 
+                    grid[z+1][x].walkable && grid[z][x-1].walkable && 
+                    !grid[z+1][x-1].walkable;
+                
+                if (isTopRightExterior || isTopLeftExterior || isBottomRightExterior || isBottomLeftExterior) {
+                    // Add a waypoint for this exterior corner
+                    const waypointId = waypoints.length;
+                    const waypoint = {
+                        id: waypointId,
+                        x: grid[z][x].worldX,
+                        z: grid[z][x].worldZ,
+                        gridX: x,
+                        gridZ: z
+                    };
+                    waypoints.push(waypoint);
+                    waypointConnections[waypointId] = []; // Initialize connections list
+                    
+                    // Waypoint visualization removed
+                }
+            }
+        }
+    }
+    
+    // Second pass: Connect waypoints that have clear line-of-sight between them
+    for (let i = 0; i < waypoints.length; i++) {
+        for (let j = i + 1; j < waypoints.length; j++) {
+            const wp1 = waypoints[i];
+            const wp2 = waypoints[j];
+            
+            // Check if there's a clear path between these waypoints
+            if (hasLineOfSight(grid, wp1.gridX, wp1.gridZ, wp2.gridX, wp2.gridZ)) {
+                // Add bidirectional connection
+                waypointConnections[wp1.id].push(wp2.id);
+                waypointConnections[wp2.id].push(wp1.id);
+                
+                // Connection visualization removed
+            }
+        }
+    }
+    
+    console.log("Generated " + waypoints.length + " waypoints at exterior corners with " + 
+                Object.values(waypointConnections).flat().length / 2 + " connections");
+}
+
+// Check if there's a clear line of sight between two grid points
+function hasLineOfSight(grid, x1, z1, x2, z2) {
+    // Use Bresenham's line algorithm to check cells along the line
+    const dx = Math.abs(x2 - x1);
+    const dz = Math.abs(z2 - z1);
+    const sx = x1 < x2 ? 1 : -1;
+    const sz = z1 < z2 ? 1 : -1;
+    let err = dx - dz;
+    
+    let x = x1;
+    let z = z1;
+    
+    while (x !== x2 || z !== z2) {
+        // Skip checking the start and end points (which we know are walkable)
+        if ((x !== x1 || z !== z1) && (x !== x2 || z !== z2)) {
+            // If we encounter a non-walkable cell along the path, there's no line of sight
+            if (!grid[z][x].walkable) {
+                return false;
+            }
+        }
+        
+        const e2 = 2 * err;
+        if (e2 > -dz) {
+            err -= dz;
+            x += sx;
+        }
+        if (e2 < dx) {
+            err += dx;
+            z += sz;
+        }
+    }
+    
+    return true; // All cells along the line are walkable
+}
+
+// A* pathfinding algorithm
+function findPath(startX, startZ, targetX, targetZ) {
+    // Unique key for caching
+    const cacheKey = `${Math.round(startX)},${Math.round(startZ)}-${Math.round(targetX)},${Math.round(targetZ)}`;
+    
+    // Check cache first
+    if (pathfindingCache[cacheKey]) {
+        return JSON.parse(JSON.stringify(pathfindingCache[cacheKey]));
+    }
+    
+    // Convert world coordinates to grid coordinates
+    const startGridX = Math.round((startX + navigationGrid[0].length * gridCellSize / 2) / gridCellSize);
+    const startGridZ = Math.round((startZ + navigationGrid.length * gridCellSize / 2) / gridCellSize);
+    const targetGridX = Math.round((targetX + navigationGrid[0].length * gridCellSize / 2) / gridCellSize);
+    const targetGridZ = Math.round((targetZ + navigationGrid.length * gridCellSize / 2) / gridCellSize);
+    
+    // Validate grid coordinates
+    if (startGridX < 0 || startGridX >= navigationGrid[0].length ||
+        startGridZ < 0 || startGridZ >= navigationGrid.length ||
+        targetGridX < 0 || targetGridX >= navigationGrid[0].length ||
+        targetGridZ < 0 || targetGridZ >= navigationGrid.length) {
+        console.warn("Invalid grid coordinates for pathfinding");
+        return [];
+    }
+    
+    // Direct distance check - if very close, return direct path
+    const directDist = distance(startX, startZ, targetX, targetZ);
+    if (directDist < 1.5) {
+        const directPath = [{x: startX, z: startZ}, {x: targetX, z: targetZ}];
+        pathfindingCache[cacheKey] = directPath;
+        return directPath;
+    }
+    
+    // If start or end is not walkable, find nearest walkable cell
+    let startNode = navigationGrid[startGridZ][startGridX];
+    let targetNode = navigationGrid[targetGridZ][targetGridX];
+    
+    if (!startNode.walkable) {
+        startNode = findNearestWalkableNode(startGridX, startGridZ);
+    }
+    
+    if (!targetNode.walkable) {
+        targetNode = findNearestWalkableNode(targetGridX, targetGridZ);
+    }
+    
+    // If no walkable cells found, return empty path
+    if (!startNode || !targetNode) {
+        return [];
+    }
+    
+    // Find nearest waypoints to start and target
+    const nearestStartWaypoint = findNearestWaypoint(startX, startZ);
+    const nearestTargetWaypoint = findNearestWaypoint(targetX, targetZ);
+    
+    // Check if we can take advantage of the waypoint network
+    if (nearestStartWaypoint && nearestTargetWaypoint && 
+        nearestStartWaypoint.id !== nearestTargetWaypoint.id) {
+        
+        // Check distance to waypoints - if too far, skip waypoint path
+        const startToWaypointDist = distance(startX, startZ, nearestStartWaypoint.x, nearestStartWaypoint.z);
+        const targetToWaypointDist = distance(targetX, targetZ, nearestTargetWaypoint.x, nearestTargetWaypoint.z);
+        
+        if (startToWaypointDist < 8 && targetToWaypointDist < 8) {
+            // First, find the waypoint-to-waypoint path using the connectivity graph
+            const waypointPath = findWaypointPath(nearestStartWaypoint.id, nearestTargetWaypoint.id);
+            
+            if (waypointPath.length > 0) {
+                // We found a path through the waypoint network
+                // Convert waypoint IDs to actual waypoints
+                const waypointNodes = waypointPath.map(id => waypoints.find(wp => wp.id === id));
+                
+                // Build a direct path from start to each waypoint to target
+                let fullPath = [];
+                
+                // Add start position if not already at first waypoint
+                const distToFirstWaypoint = distance(startX, startZ, waypointNodes[0].x, waypointNodes[0].z);
+                if (distToFirstWaypoint > 0.2) {
+                    fullPath.push({
+                        x: startX,
+                        z: startZ
+                    });
+                }
+                
+                // Add each waypoint
+                for (const waypoint of waypointNodes) {
+                    fullPath.push({
+                        x: waypoint.x,
+                        z: waypoint.z
+                    });
+                }
+                
+                // Add target if not already at last waypoint
+                const distFromLastWaypointToTarget = distance(
+                    waypointNodes[waypointNodes.length - 1].x, 
+                    waypointNodes[waypointNodes.length - 1].z,
+                    targetX, targetZ
+                );
+                
+                if (distFromLastWaypointToTarget > 0.2) {
+                    fullPath.push({
+                        x: targetX,
+                        z: targetZ
+                    });
+                }
+                
+                // Cache the result
+                pathfindingCache[cacheKey] = fullPath;
+                return fullPath;
+            }
+        }
+    }
+    
+    // Fallback: direct A* search
+    resetNavigationGrid();
+    const path = aStarSearch(startNode, targetNode);
+    
+    // Cache the result
+    pathfindingCache[cacheKey] = path;
+    return path;
+}
+
+// Reset the navigation grid for a new search
+function resetNavigationGrid() {
+    for (let z = 0; z < navigationGrid.length; z++) {
+        for (let x = 0; x < navigationGrid[z].length; x++) {
+            navigationGrid[z][x].f = 0;
+            navigationGrid[z][x].g = 0;
+            navigationGrid[z][x].h = 0;
+            navigationGrid[z][x].parent = null;
+        }
+    }
+}
+
+// Find a path through the waypoint network using Dijkstra's algorithm
+function findWaypointPath(startId, targetId) {
+    // Cache key for path reuse
+    const cacheKey = `wp-${startId}-${targetId}`;
+    if (pathfindingCache[cacheKey]) {
+        return JSON.parse(JSON.stringify(pathfindingCache[cacheKey]));
+    }
+    
+    // If no connections, return empty path
+    if (!waypointConnections[startId] || !waypointConnections[targetId]) {
+        return [];
+    }
+    
+    // Early exit if direct connection exists
+    if (waypointConnections[startId].includes(targetId)) {
+        const result = [startId, targetId];
+        pathfindingCache[cacheKey] = result;
+        return result;
+    }
+    
+    // Initialize distances with Map for better performance
+    const distances = new Map();
+    const previous = new Map();
+    const unvisited = new Set();
+    
+    // Set up initial state
+    for (const wpId in waypointConnections) {
+        const id = parseInt(wpId);
+        distances.set(id, id === startId ? 0 : Infinity);
+        previous.set(id, null);
+        unvisited.add(id);
+    }
+    
+    // Dijkstra's algorithm
+    while (unvisited.size > 0) {
+        // Find unvisited node with minimum distance
+        let current = null;
+        let minDistance = Infinity;
+        for (const wpId of unvisited) {
+            if (distances.get(wpId) < minDistance) {
+                minDistance = distances.get(wpId);
+                current = wpId;
+            }
+        }
+        
+        // If we've reached the target or there's no path, we're done
+        if (current === null || current === targetId || distances.get(current) === Infinity) {
+            break;
+        }
+        
+        unvisited.delete(current);
+        
+        // Update distances to neighbors
+        for (const neighborId of waypointConnections[current]) {
+            if (unvisited.has(neighborId)) {
+                // Find the waypoints to calculate distance
+                const wp1 = waypoints.find(wp => wp.id === current);
+                const wp2 = waypoints.find(wp => wp.id === neighborId);
+                
+                // Calculate direct distance between waypoints
+                const dist = distance(wp1.x, wp1.z, wp2.x, wp2.z);
+                const alt = distances.get(current) + dist;
+                
+                if (alt < distances.get(neighborId)) {
+                    distances.set(neighborId, alt);
+                    previous.set(neighborId, current);
+                }
+            }
+        }
+    }
+    
+    // Reconstruct the path
+    const path = [];
+    let current = targetId;
+    
+    // If there's no path to the target, return empty path
+    if (previous.get(current) === null && current !== startId) {
+        return [];
+    }
+    
+    // Work backwards from target to start
+    while (current !== null) {
+        path.unshift(current);
+        current = previous.get(current);
+    }
+    
+    // Cache the result
+    pathfindingCache[cacheKey] = path;
+    return path;
+}
+
+// Calculate improved heuristic for A* using waypoints
+function calculateWaypointHeuristic(fromX, fromZ, toX, toZ) {
+    // Base heuristic is the direct distance
+    const directDistance = distance(fromX, fromZ, toX, toZ);
+    
+    // If we don't have waypoints yet, just use direct distance
+    if (waypoints.length === 0) {
+        return directDistance;
+    }
+    
+    // Find the nearest waypoint to current position
+    const nearestWaypoint = findNearestWaypoint(fromX, fromZ);
+    if (!nearestWaypoint) {
+        return directDistance;
+    }
+    
+    // Find the nearest waypoint to target position
+    const nearestTargetWaypoint = findNearestWaypoint(toX, toZ);
+    if (!nearestTargetWaypoint || nearestWaypoint.id === nearestTargetWaypoint.id) {
+        return directDistance;
+    }
+    
+    // If these waypoints are connected, we can more aggressively bias toward them
+    const isDirectlyConnected = waypointConnections[nearestWaypoint.id].includes(nearestTargetWaypoint.id);
+    
+    // Calculate Manhattan distance between waypoints
+    const waypointDistance = Math.abs(nearestWaypoint.gridX - nearestTargetWaypoint.gridX) + 
+                            Math.abs(nearestWaypoint.gridZ - nearestTargetWaypoint.gridZ);
+    
+    // Calculate distance from current position to nearest waypoint
+    const distToWaypoint = distance(fromX, fromZ, nearestWaypoint.x, nearestWaypoint.z);
+    
+    // Calculate distance from nearest target waypoint to target
+    const distFromWaypointToTarget = distance(nearestTargetWaypoint.x, nearestTargetWaypoint.z, toX, toZ);
+    
+    // Combine the distances with a weight that depends on connectivity
+    // This creates a preference for paths that go through connected waypoints
+    const weight = isDirectlyConnected ? 0.7 : 0.9;
+    return (distToWaypoint + waypointDistance + distFromWaypointToTarget) * weight;
+}
+
+// Find the nearest walkable node in the grid
+function findNearestWalkableNode(gridX, gridZ) {
+    // Start with a small search radius and expand outward
+    for (let radius = 1; radius < 10; radius++) {
+        for (let dx = -radius; dx <= radius; dx++) {
+            for (let dz = -radius; dz <= radius; dz++) {
+                // Only check cells at the current radius (perimeter)
+                if (Math.abs(dx) === radius || Math.abs(dz) === radius) {
+                    const x = gridX + dx;
+                    const z = gridZ + dz;
+                    
+                    // Check if coordinates are valid
+                    if (x >= 0 && x < navigationGrid[0].length && 
+                        z >= 0 && z < navigationGrid.length) {
+                        // If this cell is walkable, return it
+                        if (navigationGrid[z][x].walkable) {
+                            return navigationGrid[z][x];
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    return null; // No walkable node found within search radius
+}
+
+// Find the nearest waypoint to a given position
+function findNearestWaypoint(x, z) {
+    if (waypoints.length === 0) {
+        return null;
+    }
+    
+    let nearestWaypoint = waypoints[0];
+    let minDistance = distanceSquared(x, z, waypoints[0].x, waypoints[0].z);
+    
+    for (let i = 1; i < waypoints.length; i++) {
+        const distance = distanceSquared(x, z, waypoints[i].x, waypoints[i].z);
+        if (distance < minDistance) {
+            minDistance = distance;
+            nearestWaypoint = waypoints[i];
+        }
+    }
+    
+    return nearestWaypoint;
+}
+
+// Helper function for squared distance (faster than square root)
+function distanceSquared(x1, z1, x2, z2) {
+    return (x1 - x2) * (x1 - x2) + (z1 - z2) * (z1 - z2);
+}
+
+// Helper function for distance
+function distance(x1, z1, x2, z2) {
+    return Math.sqrt(distanceSquared(x1, z1, x2, z2));
 }
 
 // Handle mouse down event - start projecting rays
@@ -700,6 +1298,10 @@ function projectRay() {
     const raycastObjects = [...walls, floor, roof];
     if (enemy) raycastObjects.push(enemy);
     
+    // Add doors and levers to raycast objects
+    raycastObjects.push(...doors);
+    raycastObjects.push(...levers);
+    
     // Check for intersections with all objects
     const intersects = raycaster.intersectObjects(raycastObjects, true);
     
@@ -729,13 +1331,26 @@ function createDot(position, materialType) {
     // Base color depends on material type
     let color;
     
-    // Red for enemy, blue for concrete
     if (materialType === "enemy") {
         color = new THREE.Color(0xff0000); // Red for enemy
         
         // Play lunasia sound when dot contacts enemy
         if (audioInitialized && lunasiaSound && lunasiaSound.buffer && !lunasiaSound.isPlaying) {
             lunasiaSound.play();
+        }
+    } else if (materialType === "lever") {
+        color = new THREE.Color(0xff8000); // Orange for levers
+    } else if (materialType === "door") {
+        // Doors are blue when inactive, green when active
+        const doorObj = doors.find(door => 
+            door.userData.material === "door" && 
+            door.position.distanceTo(position) < 0.5
+        );
+        
+        if (doorObj && doorObj.userData.active) {
+            color = new THREE.Color(0x00ff00); // Green for active doors
+        } else {
+            color = new THREE.Color(0x6fc0ff); // Blue for inactive doors (same as concrete)
         }
     } else {
         color = new THREE.Color(0x6fc0ff); // Blue for concrete
@@ -963,6 +1578,117 @@ function createWall(x, z, size, height, material) {
     return wallGroup;
 }
 
+// Create a door piece
+function createDoor(x, z, size, height, material) {
+    // Create a door mesh - make it completely invisible until scanned
+    const doorGeometry = new THREE.BoxGeometry(size, height * 0.8, size * 0.3);
+    const doorMaterial = new THREE.MeshStandardMaterial({
+        color: 0x3D5A80, // Bluish color to distinguish from walls (only visible when scanned)
+        roughness: 0.7,
+        metalness: 0.3,
+        opacity: 0.0,      // Make completely invisible
+        transparent: true // Enable transparency
+    });
+    
+    const door = new THREE.Mesh(doorGeometry, doorMaterial);
+    
+    // Determine the outward direction - doors appear to be on the right side of the map layout
+    // So we'll move them 0.5m to the right (positive X)
+    const outwardOffset = 0.5;
+    door.position.set(x + outwardOffset, height * 0.4, z);
+    
+    // Add a larger custom bounding box for interaction detection
+    const boundingBoxSize = new THREE.Vector3(size * 1.5, height, size * 1.5);
+    const boundingBoxCenter = new THREE.Vector3(
+        door.position.x, 
+        door.position.y, 
+        door.position.z
+    );
+    
+    // Create a manually sized bounding box around the door
+    const boundingBox = new THREE.Box3();
+    boundingBox.setFromCenterAndSize(boundingBoxCenter, boundingBoxSize);
+    
+    door.userData.boundingBox = boundingBox;
+    door.userData.material = "door"; // Tag as door material for scanning
+    door.userData.active = false; // Initially not active
+    
+    // Store door for collision detection and state management
+    doors.push(door);
+    walls.push(door); // Add to walls for collision detection
+    scene.add(door);
+    
+    return door;
+}
+
+// Create a lever
+function createLever(x, z, size) {
+    // Create a platform for the lever - invisible until scanned
+    const platformGeometry = new THREE.BoxGeometry(0.25, 0.05, 0.25);
+    const platformMaterial = new THREE.MeshStandardMaterial({
+        color: 0x777777,
+        roughness: 0.5,
+        metalness: 0.5,
+        opacity: 0.0,      // Make completely invisible
+        transparent: true // Enable transparency
+    });
+    
+    const platform = new THREE.Mesh(platformGeometry, platformMaterial);
+    platform.position.set(0, 0.025, 0); // Just above the floor
+    
+    // Create the lever itself - invisible until scanned
+    const leverBaseGeometry = new THREE.CylinderGeometry(0.03, 0.03, 0.1, 8);
+    const leverBaseMaterial = new THREE.MeshStandardMaterial({
+        color: 0x444444,
+        roughness: 0.6,
+        metalness: 0.8,
+        opacity: 0.0,      // Make completely invisible
+        transparent: true // Enable transparency
+    });
+    
+    const leverBase = new THREE.Mesh(leverBaseGeometry, leverBaseMaterial);
+    leverBase.position.set(0, 0.075, 0); // On top of the platform
+    platform.add(leverBase);
+    
+    // Create the lever handle - invisible until scanned
+    const leverHandleGeometry = new THREE.CylinderGeometry(0.01, 0.01, 0.15, 8);
+    const leverHandleMaterial = new THREE.MeshStandardMaterial({
+        color: 0x333333,
+        roughness: 0.4,
+        metalness: 0.9,
+        opacity: 0.0,      // Make completely invisible
+        transparent: true // Enable transparency
+    });
+    
+    const leverHandle = new THREE.Mesh(leverHandleGeometry, leverHandleMaterial);
+    leverHandle.position.set(0, 0.075, 0);
+    leverHandle.rotation.x = Math.PI / 4; // 45-degree angle initially
+    leverBase.add(leverHandle);
+    
+    // Group everything together
+    const leverGroup = new THREE.Group();
+    leverGroup.add(platform);
+    leverGroup.position.set(x, 0, z);
+    
+    // Set up user data
+    leverGroup.userData.material = "lever"; // Tag as lever material for scanning
+    leverGroup.userData.active = false; // Initially not active
+    leverGroup.userData.handle = leverHandle; // Reference to the handle for animation
+    leverGroup.userData.interactionRadius = 1.0; // Increased interaction radius for easier interaction
+    
+    // Set up bounding sphere for interaction detection - center at the lever's position
+    leverGroup.userData.interactionSphere = new THREE.Sphere(
+        new THREE.Vector3(x, 0.1, z),
+        1.0
+    );
+    
+    // Store lever for interaction checking
+    levers.push(leverGroup);
+    scene.add(leverGroup);
+    
+    return leverGroup;
+}
+
 // Check for wall collisions with improved sliding behavior
 function checkWallCollisions(position, previousPosition, collisionRadius) {
     // Create a bounding sphere around the position
@@ -1058,6 +1784,21 @@ function onKeyDown(event) {
         case 'ShiftRight':
             sprint = true;
             break;
+        case 'KeyF':
+            // Start lever activation if not already pressing
+            if (!leverKeyPressed) {
+                console.log("F key pressed - checking for interactions");
+                leverKeyPressed = true;
+                
+                // First check lever interaction
+                checkLeverInteraction();
+                
+                // Also immediately check door interaction (redundant but helpful for debugging)
+                if (doorActivated && !activeLever) {
+                    checkDoorEscapeCollision();
+                }
+            }
+            break;
     }
 }
 
@@ -1082,6 +1823,20 @@ function onKeyUp(event) {
         case 'ShiftRight':
             sprint = false;
             break;
+        case 'KeyF':
+            // Cancel lever activation
+            console.log("F key released");
+            leverKeyPressed = false;
+            if (activeLever) {
+                console.log("Canceling lever activation");
+                resetLeverActivation();
+            }
+            // Also cancel door escape if in progress
+            if (activeDoor) {
+                console.log("Canceling door escape");
+                resetDoorEscapeProgress();
+            }
+            break;
     }
 }
 
@@ -1096,14 +1851,25 @@ function onWindowResize() {
 function animate() {
     requestAnimationFrame(animate);
     
-    // Calculate time delta for smooth movement
-    const time = performance.now();
-    const delta = Math.min((time - prevTime) / 1000, 0.1); // Cap delta to prevent large jumps
+    const currentTime = performance.now();
+    const delta = (currentTime - prevTime) / 1000; // Convert to seconds
+    
+    // Update total game time only if game is running
+    if (gameState === "PLAYING") {
+        totalGameTime += currentTime - prevTime;
+        
+        // Check for dialogues that should be triggered
+        checkScheduledDialogues();
+    }
+    
+    prevTime = currentTime;
     
     // Only process game logic if in PLAYING state
     if (gameState === "PLAYING") {
-        // Calculate and store the current game time
-        totalGameTime = time - gameStartTime;
+        // Periodically clean up pathfinding cache
+        if (currentTime % 30000 < 100) { // Every 30 seconds
+            cleanupPathfindingCache();
+        }
         
         // Project rays in the animation loop instead of using intervals
         if (isClicking) {
@@ -1164,9 +1930,9 @@ function animate() {
         // Handle footstep sounds
         if (isMoving) {
             // Play footstep sound at intervals
-            if (time - lastFootstepTime > footstepInterval) {
+            if (currentTime - lastFootstepTime > footstepInterval) {
                 playFootstepSound();
-                lastFootstepTime = time;
+                lastFootstepTime = currentTime;
             }
         }
         
@@ -1212,14 +1978,28 @@ function animate() {
             
             // Apply the corrected position
             camera.position.copy(adjustedPosition);
+            
+            // Update lever activation if needed
+            if (activeLever && leverKeyPressed) {
+                updateLeverActivation();
+            }
+            
+            // Update door escape progress if needed
+            if (activeDoor && leverKeyPressed) {
+                updateDoorEscapeProgress();
+            }
+            
+            // Check if player is touching an activated door
+            if (doorActivated) {
+                checkDoorEscapeCollision();
+            }
         }
     }
     
     // Update the dots (fading over time) regardless of game state
     updateDots();
     
-    prevTime = time;
-    
+    // Render the scene
     renderer.render(scene, camera);
 }
 
@@ -1260,18 +2040,24 @@ function createEnemy() {
     const height = 1.6;
     const depth = 0.8;
     
-    // Create a simple box geometry for the enemy
+    // Create a simple box geometry for the enemy but make it invisible
     const geometry = new THREE.BoxGeometry(width, height, depth);
     const material = new THREE.MeshStandardMaterial({
-        color: 0x000000,  // Black color
-        transparent: true,
-        opacity: 0.0      // Completely invisible
+        color: 0xff0000,  // Bright red color (only visible when scanned)
+        roughness: 0.5,
+        metalness: 0.2,
+        opacity: 0.0,     // Make completely invisible
+        transparent: true // Enable transparency
     });
     
     enemy = new THREE.Mesh(geometry, material);
     
     // Position at the center of the map
     enemy.position.set(0, height/2, 0);
+    
+    // Initialize position tracking
+    lastEnemyPosition.copy(enemy.position);
+    lastEnemyMoveTime = performance.now();
     
     // Add to the scene
     scene.add(enemy);
@@ -1285,34 +2071,374 @@ function createEnemy() {
     console.log("Enemy created at position:", enemy.position);
 }
 
+// Find the best waypoint that has line of sight to the player
+function findWaypointWithLineOfSightToPlayer() {
+    // Initialize best waypoint and min distance
+    let bestWaypoint = null;
+    let minDistance = Infinity;
+    
+    // Check each waypoint
+    for (const waypoint of waypoints) {
+        // Create a ray from waypoint to player
+        const direction = new THREE.Vector3(
+            camera.position.x - waypoint.x,
+            0, // Keep on the same Y level
+            camera.position.z - waypoint.z
+        ).normalize();
+        
+        // Set up raycaster from waypoint position toward player
+        const waypointPos = new THREE.Vector3(
+            waypoint.x, 
+            1.0, // At roughly eye level
+            waypoint.z
+        );
+        raycaster.set(waypointPos, direction);
+        
+        // Get distance from waypoint to player
+        const distanceToPlayer = new THREE.Vector3(
+            camera.position.x - waypoint.x,
+            0,
+            camera.position.z - waypoint.z
+        ).length();
+        
+        // Check for intersections with walls
+        const intersects = raycaster.intersectObjects(walls, true);
+        
+        // If we have clear line of sight to player from this waypoint
+        if (intersects.length === 0 || intersects[0].distance > distanceToPlayer) {
+            // Calculate total path distance (from enemy to waypoint + from waypoint to player)
+            const distanceFromEnemyToWaypoint = distance(
+                enemy.position.x, enemy.position.z,
+                waypoint.x, waypoint.z
+            );
+            
+            const totalDistance = distanceFromEnemyToWaypoint + distanceToPlayer;
+            
+            // If this waypoint offers a shorter path, update our best waypoint
+            if (totalDistance < minDistance) {
+                minDistance = totalDistance;
+                bestWaypoint = waypoint;
+            }
+        }
+    }
+    
+    return bestWaypoint;
+}
+
 // Update enemy position and check for collision with player
 function updateEnemy() {
     if (!enemy) return;
     
-    // Simple movement: move toward the player
-    const playerPosition = camera.position.clone();
-    const direction = new THREE.Vector3();
+    const currentTime = performance.now();
     
-    // Calculate direction to player (ignoring Y axis)
-    direction.subVectors(playerPosition, enemy.position);
-    direction.y = 0; // Keep the enemy on the ground
-    direction.normalize();
+    // Check if the enemy has moved - use approximate comparison for better performance
+    const lastPos = lastEnemyPosition;
+    const enemyPos = enemy.position;
+    const hasMoved = Math.abs(lastPos.x - enemyPos.x) > 0.001 || Math.abs(lastPos.z - enemyPos.z) > 0.001;
     
-    // Move the enemy at a slower speed than the player
-    const speed = 0.02;
-    enemy.position.x += direction.x * speed;
-    enemy.position.z += direction.z * speed;
+    // If the enemy hasn't moved for stuckCheckInterval ms, teleport to nearest waypoint
+    if (!hasMoved && currentTime - lastEnemyMoveTime > stuckCheckInterval) {
+        // Only log in development
+        if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+            console.log("Enemy stuck detected! Teleporting to nearest waypoint");
+        }
+        
+        // Find the nearest waypoint to teleport to
+        const nearestWaypoint = findNearestWaypoint(enemyPos.x, enemyPos.z);
+        
+        if (nearestWaypoint) {
+            // Teleport the enemy to the waypoint
+            enemyPos.set(nearestWaypoint.x, enemyPos.y, nearestWaypoint.z);
+            
+            // Update the enemy's bounding box
+            enemy.userData.boundingBox.setFromObject(enemy);
+            
+            // Clear the current path to force recalculation
+            currentPath = [];
+            enemy.userData.followingWaypointPath = false;
+            
+            // Reset the movement tracking
+            lastEnemyPosition.copy(enemyPos);
+            lastEnemyMoveTime = currentTime;
+            
+            // Reset path caches if teleporting
+            if (Object.keys(pathfindingCache).length > 100) {
+                pathfindingCache = {};
+            }
+            
+            // Only log in development
+            if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+                console.log("Enemy teleported to waypoint at position:", enemyPos);
+            }
+            return; // Skip the rest of the update for this frame
+        }
+    }
     
-    // Update bounding box
+    // If the enemy has moved, update the tracking variables
+    if (hasMoved) {
+        lastEnemyPosition.copy(enemyPos);
+        lastEnemyMoveTime = currentTime;
+    }
+    
+    // Check if we have direct line of sight to the player
+    const previousLineOfSight = enemy.userData.hasLineOfSight || false;
+    const hasDirectLineOfSight = checkLineOfSightToPlayer();
+    
+    // Check if line of sight was just lost (transition from having sight to losing it)
+    const justLostLineOfSight = previousLineOfSight && !hasDirectLineOfSight;
+    
+    // Calculate if player has moved significantly - only when needed
+    let playerMovedSignificantly = false;
+    if (currentPath.length > 0 && currentTime - pathUpdateTime > pathUpdateInterval && !enemy.userData.followingWaypointPath) {
+        const lastPathPoint = currentPath[currentPath.length - 1];
+        const playerPos = camera.position;
+        const dx = lastPathPoint.x - playerPos.x;
+        const dz = lastPathPoint.z - playerPos.z;
+        playerMovedSignificantly = (dx * dx + dz * dz) > 25; // 5 squared = 25 (distance threshold of 5)
+    }
+    
+    // Determine if path should be recalculated
+    const shouldRecalculatePath = 
+        currentPath.length === 0 || 
+        (currentTime - pathUpdateTime > pathUpdateInterval && (!enemy.userData.followingWaypointPath || playerMovedSignificantly)) ||
+        (hasDirectLineOfSight && !previousLineOfSight) ||
+        justLostLineOfSight;
+    
+    // Update line of sight status
+    enemy.userData.hasLineOfSight = hasDirectLineOfSight;
+    
+    // Handle path recalculation if needed
+    if (shouldRecalculatePath) {
+        const playerPos = camera.position;
+        
+        // If we just lost line of sight, always recalculate using waypoints
+        if (justLostLineOfSight || (!hasDirectLineOfSight && currentPath.length === 0)) {
+            // Force immediate path recalculation when line of sight is lost
+            pathUpdateTime = currentTime - pathUpdateInterval;
+            
+            // Find the best waypoint that has line of sight to the player
+            const targetWaypoint = findWaypointWithLineOfSightToPlayer();
+            
+            if (targetWaypoint) {
+                // Calculate path from enemy to the target waypoint
+                const pathToWaypoint = findPath(
+                    enemyPos.x, enemyPos.z,
+                    targetWaypoint.x, targetWaypoint.z
+                );
+                
+                // If we found a path to the waypoint, add a direct line from waypoint to player
+                if (pathToWaypoint.length > 0) {
+                    // Remove the last point if it's the waypoint itself
+                    if (pathToWaypoint.length > 1) {
+                        pathToWaypoint.pop();
+                    }
+                    
+                    // Add the waypoint and player position to complete the path
+                    pathToWaypoint.push({ x: targetWaypoint.x, z: targetWaypoint.z });
+                    pathToWaypoint.push({ x: playerPos.x, z: playerPos.z });
+                    
+                    // Use this combined path
+                    currentPath = pathToWaypoint;
+                    enemy.userData.followingWaypointPath = true;
+                } else {
+                    // Fallback to direct path if can't path to waypoint
+                    currentPath = [{ x: playerPos.x, z: playerPos.z }];
+                    enemy.userData.followingWaypointPath = false;
+                }
+            } else {
+                // Calculate conventional path if no waypoint with line of sight
+                currentPath = findPath(
+                    enemyPos.x, enemyPos.z,
+                    playerPos.x, playerPos.z
+                );
+                enemy.userData.followingWaypointPath = currentPath.length > 2;
+            }
+            
+            pathUpdateTime = currentTime;
+        }
+        // Use direct path if we have line of sight
+        else if (hasDirectLineOfSight) {
+            currentPath = [{ x: playerPos.x, z: playerPos.z }];
+            enemy.userData.followingWaypointPath = false;
+            
+            pathUpdateTime = currentTime;
+        }
+        // Regular path update
+        else if (currentTime - pathUpdateTime > pathUpdateInterval) {
+            // Try to minimize changes to existing path
+            if (currentPath.length > 0) {
+                // Check if we can just update the final destination
+                const pathEndpoint = currentPath[currentPath.length - 1];
+                const dx = pathEndpoint.x - playerPos.x;
+                const dz = pathEndpoint.z - playerPos.z;
+                const distanceFromLastWaypointToPlayer = Math.sqrt(dx * dx + dz * dz);
+                
+                if (distanceFromLastWaypointToPlayer < 5) {
+                    // Just update the final destination
+                    currentPath[currentPath.length - 1] = { x: playerPos.x, z: playerPos.z };
+                    pathUpdateTime = currentTime;
+                } else {
+                    // Recalculate path through waypoint
+                    const targetWaypoint = findWaypointWithLineOfSightToPlayer();
+                    
+                    if (targetWaypoint) {
+                        // Create path through waypoint
+                        const pathToWaypoint = findPath(
+                            enemyPos.x, enemyPos.z,
+                            targetWaypoint.x, targetWaypoint.z
+                        );
+                        
+                        if (pathToWaypoint.length > 0) {
+                            // Remove last point if needed
+                            if (pathToWaypoint.length > 1) {
+                                pathToWaypoint.pop();
+                            }
+                            
+                            // Add waypoint and player position
+                            pathToWaypoint.push({ x: targetWaypoint.x, z: targetWaypoint.z });
+                            pathToWaypoint.push({ x: playerPos.x, z: playerPos.z });
+                            
+                            currentPath = pathToWaypoint;
+                            enemy.userData.followingWaypointPath = true;
+                        } else {
+                            // Fallback to direct path
+                            currentPath = findPath(
+                                enemyPos.x, enemyPos.z,
+                                playerPos.x, playerPos.z
+                            );
+                            enemy.userData.followingWaypointPath = currentPath.length > 2;
+                        }
+                    } else {
+                        // Fallback to standard path
+                        currentPath = findPath(
+                            enemyPos.x, enemyPos.z,
+                            playerPos.x, playerPos.z
+                        );
+                        enemy.userData.followingWaypointPath = currentPath.length > 2;
+                    }
+                    
+                    pathUpdateTime = currentTime;
+                }
+            }
+        }
+    }
+    
+    // Move along the current path if one exists
+    if (currentPath.length > 0) {
+        // Get the next target waypoint
+        const targetWaypoint = currentPath[0];
+        
+        // Calculate direction to next waypoint
+        const dx = targetWaypoint.x - enemyPos.x;
+        const dz = targetWaypoint.z - enemyPos.z;
+        const distanceToWaypoint = Math.sqrt(dx * dx + dz * dz);
+        
+        // If we've reached the waypoint, move to the next one
+        if (distanceToWaypoint < 0.2) {
+            // Remove the current waypoint
+            currentPath.shift();
+            
+            // If we've reached the end of the path
+            if (currentPath.length === 0) {
+                // If we can see the player, create a direct path
+                if (hasDirectLineOfSight) {
+                    currentPath = [{ x: camera.position.x, z: camera.position.z }];
+                    enemy.userData.followingWaypointPath = false;
+                } else {
+                    // Force path recalculation on next frame
+                    enemy.userData.followingWaypointPath = false;
+                }
+            }
+        } else {
+            // Calculate normalized direction
+            const invDist = 1 / distanceToWaypoint;
+            const dirX = dx * invDist;
+            const dirZ = dz * invDist;
+            
+            // Calculate speed - faster when in line of sight
+            const speed = hasDirectLineOfSight ? 0.0325 : 0.025; // Increased by 25% from 0.026/0.02
+            
+            // Store current position before movement
+            const previousPosition = _tempVector3 || new THREE.Vector3(); // Reuse vector if available
+            _tempVector3 = previousPosition;
+            previousPosition.copy(enemyPos);
+            
+            // Update enemy position
+            enemyPos.x += dirX * speed;
+            enemyPos.z += dirZ * speed;
+            
+            // Check for wall collisions
+            const adjustedPosition = checkWallCollisions(
+                enemyPos.clone(),
+                previousPosition,
+                0.4 // Enemy collision radius
+            );
+            
+            // Apply adjusted position
+            enemyPos.copy(adjustedPosition);
+        }
+    }
+    
+    // Update enemy bounding box and check for collision with player
     enemy.userData.boundingBox.setFromObject(enemy);
     
-    // Check for collision with player
-    const playerBoundingSphere = new THREE.Sphere(camera.position.clone(), collisionDistance);
+    // Use the same temp vector for player position to avoid creating new objects
+    const playerPos = _tempVector3_2 || new THREE.Vector3();
+    _tempVector3_2 = playerPos;
+    playerPos.copy(camera.position);
+    
+    const playerBoundingSphere = _tempSphere || new THREE.Sphere();
+    _tempSphere = playerBoundingSphere;
+    playerBoundingSphere.center.copy(playerPos);
+    playerBoundingSphere.radius = collisionDistance;
     
     if (enemy.userData.boundingBox.intersectsSphere(playerBoundingSphere)) {
-        console.log("Player collision with enemy!");
         gameOver();
     }
+}
+
+// Declare reusable temporary variables to avoid garbage collection
+let _tempVector3 = null;
+let _tempVector3_2 = null;
+let _tempSphere = null;
+
+// Check if there is a direct line of sight from enemy to player
+function checkLineOfSightToPlayer() {
+    if (!enemy) return false;
+    
+    // Use raycasting for a more accurate line of sight check
+    // Create a ray from enemy to player
+    const direction = new THREE.Vector3(
+        camera.position.x - enemy.position.x,
+        0, // Keep on the same Y level
+        camera.position.z - enemy.position.z
+    ).normalize();
+    
+    // Set up raycaster from enemy position toward player
+    const enemyPos = new THREE.Vector3(
+        enemy.position.x, 
+        1.0, // At roughly eye level
+        enemy.position.z
+    );
+    raycaster.set(enemyPos, direction);
+    
+    // Get distance to player
+    const distanceToPlayer = new THREE.Vector3(
+        camera.position.x - enemy.position.x,
+        0,
+        camera.position.z - enemy.position.z
+    ).length();
+    
+    // Check for intersections with walls
+    const intersects = raycaster.intersectObjects(walls, true);
+    
+    // If we hit something and it's closer than the player, there's no line of sight
+    if (intersects.length > 0 && intersects[0].distance < distanceToPlayer) {
+        return false;
+    }
+    
+    // No obstructions found - we have direct line of sight
+    return true;
 }
 
 // Game over state
@@ -1330,6 +2456,592 @@ function gameOver() {
     }
     
     showGameOverScreen();
+}
+
+// A* search algorithm implementation with waypoint heuristics
+function aStarSearch(startNode, targetNode) {
+    // Use a cache key based on start/target coordinates
+    const cacheKey = `${startNode.x},${startNode.z}-${targetNode.x},${targetNode.z}`;
+    if (pathfindingCache[cacheKey]) {
+        // Return cached path if available
+        return JSON.parse(JSON.stringify(pathfindingCache[cacheKey]));
+    }
+    
+    const openSet = [];
+    const closedSet = new Set(); // Using Set for faster lookups
+    
+    // Add start node to open set
+    startNode.f = 0;
+    startNode.g = 0;
+    startNode.h = 0;
+    startNode.parent = null;
+    openSet.push(startNode);
+    
+    let iterations = 0; // Track iterations for early termination
+    
+    while (openSet.length > 0 && iterations < maxPathfindingIterations) {
+        iterations++;
+        
+        // Find node with lowest f cost - use a more efficient method
+        let lowestIndex = 0;
+        for (let i = 1; i < openSet.length; i++) {
+            if (openSet[i].f < openSet[lowestIndex].f) {
+                lowestIndex = i;
+            }
+        }
+        
+        const currentNode = openSet[lowestIndex];
+        
+        // Early exit if we're close enough to the target
+        const distToTarget = distance(
+            currentNode.worldX, currentNode.worldZ,
+            targetNode.worldX, targetNode.worldZ
+        );
+        if (distToTarget < 0.5 || currentNode === targetNode) {
+            // Reconstruct path and cache it
+            const path = reconstructPath(currentNode);
+            pathfindingCache[cacheKey] = JSON.parse(JSON.stringify(path));
+            return path;
+        }
+        
+        // Remove current node from open set
+        openSet.splice(lowestIndex, 1);
+        closedSet.add(`${currentNode.x},${currentNode.z}`);
+        
+        // Get neighbors more efficiently
+        const neighbors = getNeighbors(currentNode);
+        
+        for (const neighbor of neighbors) {
+            // Skip if neighbor is in closed set - faster lookup with Set
+            if (closedSet.has(`${neighbor.x},${neighbor.z}`)) {
+                continue;
+            }
+            
+            // Calculate g score
+            const tentativeG = currentNode.g + distance(
+                currentNode.worldX, currentNode.worldZ, 
+                neighbor.worldX, neighbor.worldZ
+            );
+            
+            // Find if neighbor is in open set
+            let neighborIndex = -1;
+            for (let i = 0; i < openSet.length; i++) {
+                if (openSet[i].x === neighbor.x && openSet[i].z === neighbor.z) {
+                    neighborIndex = i;
+                    break;
+                }
+            }
+            
+            if (neighborIndex === -1) {
+                // Not in open set, add it
+                neighbor.g = tentativeG;
+                neighbor.h = heuristic(neighbor, targetNode);
+                neighbor.f = neighbor.g + neighbor.h;
+                neighbor.parent = currentNode;
+                openSet.push(neighbor);
+            } else if (tentativeG < openSet[neighborIndex].g) {
+                // Better path to neighbor
+                openSet[neighborIndex].g = tentativeG;
+                openSet[neighborIndex].f = tentativeG + openSet[neighborIndex].h;
+                openSet[neighborIndex].parent = currentNode;
+            }
+        }
+    }
+    
+    console.log(`A* search terminated after ${iterations} iterations without finding path`);
+    return []; // No path found or too many iterations
+}
+
+// Helper function to reconstruct path
+function reconstructPath(node) {
+    const path = [];
+    let current = node;
+    
+    while (current) {
+        path.push({
+            x: current.worldX,
+            z: current.worldZ
+        });
+        current = current.parent;
+    }
+    
+    // Simplify path to reduce unnecessary waypoints
+    const simplifiedPath = simplifyPath(path.reverse());
+    return simplifiedPath;
+}
+
+// Simple heuristic function for A*
+function heuristic(a, b) {
+    // Direct distance (Euclidean) plus a small bias to improve direction
+    return distance(a.worldX, a.worldZ, b.worldX, b.worldZ) * 1.1;
+}
+
+// Simplify path by removing redundant waypoints
+function simplifyPath(path) {
+    if (path.length <= 2) return path;
+    
+    const simplified = [path[0]];
+    
+    for (let i = 1; i < path.length - 1; i++) {
+        const prev = simplified[simplified.length - 1];
+        const current = path[i];
+        const next = path[i + 1];
+        
+        // Check if current point is necessary based on angle and distance
+        const d1 = distance(prev.x, prev.z, current.x, current.z);
+        const d2 = distance(current.x, current.z, next.x, next.z);
+        const d3 = distance(prev.x, prev.z, next.x, next.z);
+        
+        // If going directly from prev to next isn't much longer than using the waypoint,
+        // skip the current waypoint
+        if (d3 <= d1 + d2 + pathSimplificationThreshold) {
+            continue;
+        }
+        
+        simplified.push(current);
+    }
+    
+    simplified.push(path[path.length - 1]);
+    return simplified;
+}
+
+// Implement cache management - call this periodically to prevent memory bloat
+function cleanupPathfindingCache() {
+    // If cache grows too large, reset it
+    if (Object.keys(pathfindingCache).length > 200) {
+        console.log("Cleaning pathfinding cache");
+        pathfindingCache = {};
+    }
+}
+
+// Get walkable neighbors for a node - re-implemented to avoid the Reference Error
+function getNeighbors(node) {
+    const neighbors = [];
+    const directions = [
+        {dx: 0, dz: -1},  // North
+        {dx: 1, dz: 0},   // East
+        {dx: 0, dz: 1},   // South
+        {dx: -1, dz: 0},  // West
+        // Diagonals
+        {dx: 1, dz: -1},  // Northeast
+        {dx: 1, dz: 1},   // Southeast
+        {dx: -1, dz: 1},  // Southwest
+        {dx: -1, dz: -1}  // Northwest
+    ];
+    
+    for (const dir of directions) {
+        const x = node.x + dir.dx;
+        const z = node.z + dir.dz;
+        
+        // Check if within grid bounds
+        if (x >= 0 && x < navigationGrid[0].length && z >= 0 && z < navigationGrid.length) {
+            // Check if walkable
+            const neighbor = navigationGrid[z][x];
+            if (neighbor.walkable) {
+                // Additional check for diagonal movement - make sure both adjacent cells are walkable
+                if (dir.dx !== 0 && dir.dz !== 0) {
+                    // For diagonals, check if we can move through the corners
+                    const canMoveThroughX = navigationGrid[node.z][x].walkable;
+                    const canMoveThroughZ = navigationGrid[z][node.x].walkable;
+                    
+                    if (!canMoveThroughX || !canMoveThroughZ) {
+                        continue; // Skip this diagonal if we can't move through the corner
+                    }
+                }
+                
+                neighbors.push(neighbor);
+            }
+        }
+    }
+    
+    return neighbors;
+}
+
+// Add lever and door interaction functions after animate() function
+
+// Check if player is near an inactive lever
+function checkLeverInteraction() {
+    if (activeLever || !leverKeyPressed) return;
+    
+    const playerPos = camera.position.clone();
+    playerPos.y = 0.1; // Use a consistent Y position for interaction
+    
+    // Check each lever
+    for (const lever of levers) {
+        // Skip already activated levers
+        if (lever.userData.active) continue;
+        
+        // Check if player is within interaction radius of this lever
+        const leverPos = lever.position.clone();
+        const dist = playerPos.distanceTo(leverPos);
+        
+        // Debug - log distance to nearest lever
+        console.log("Distance to lever:", dist);
+        
+        if (dist <= 1.0) { // Increased interaction radius
+            // Start lever activation
+            activeLever = lever;
+            leverActivationStartTime = performance.now();
+            leverActivationProgress = 0;
+            
+            // Show subtitle for feedback
+            showSubtitle("Hold F to activate lever...", requiredLeverHoldTime + 500);
+            
+            // Create progress bar
+            createLeverProgressBar();
+            break;
+        }
+    }
+}
+
+// Create or update a progress bar for lever activation
+function createLeverProgressBar() {
+    // Remove existing progress bar if present
+    let progressBar = document.getElementById('lever-progress');
+    if (!progressBar) {
+        progressBar = document.createElement('div');
+        progressBar.id = 'lever-progress';
+        progressBar.style.position = 'absolute';
+        progressBar.style.bottom = '10%';
+        progressBar.style.left = '50%';
+        progressBar.style.transform = 'translateX(-50%)';
+        progressBar.style.width = '200px';
+        progressBar.style.height = '20px';
+        progressBar.style.backgroundColor = '#333';
+        progressBar.style.border = '2px solid #FFF';
+        
+        const progressFill = document.createElement('div');
+        progressFill.id = 'lever-progress-fill';
+        progressFill.style.width = '0%';
+        progressFill.style.height = '100%';
+        progressFill.style.backgroundColor = '#FF8000';
+        
+        progressBar.appendChild(progressFill);
+        document.body.appendChild(progressBar);
+    }
+}
+
+// Update lever activation progress
+function updateLeverActivation() {
+    if (!activeLever || !leverKeyPressed) return;
+    
+    const playerPos = camera.position.clone();
+    playerPos.y = 0.1;
+    
+    // Make sure player is still close enough to the lever
+    const dist = playerPos.distanceTo(activeLever.position);
+    if (dist > 1.0) { // Use the same increased interaction radius
+        resetLeverActivation();
+        return;
+    }
+    
+    // Calculate progress
+    const currentTime = performance.now();
+    const elapsedTime = currentTime - leverActivationStartTime;
+    leverActivationProgress = Math.min(100, (elapsedTime / requiredLeverHoldTime) * 100);
+    
+    // Update progress bar
+    const progressFill = document.getElementById('lever-progress-fill');
+    if (progressFill) {
+        progressFill.style.width = leverActivationProgress + '%';
+    }
+    
+    // Animate lever handle
+    if (activeLever.userData.handle) {
+        // Rotate from 45 degrees to -45 degrees based on progress
+        const rotationProgress = leverActivationProgress / 100;
+        const startAngle = Math.PI / 4; // 45 degrees
+        const endAngle = -Math.PI / 4; // -45 degrees
+        const currentAngle = startAngle + (endAngle - startAngle) * rotationProgress;
+        activeLever.userData.handle.rotation.x = currentAngle;
+    }
+    
+    // Check if lever is fully activated
+    if (leverActivationProgress >= 100) {
+        activateLever();
+    }
+}
+
+// Reset lever activation
+function resetLeverActivation() {
+    if (activeLever && activeLever.userData.handle && !activeLever.userData.active) {
+        // Reset lever handle rotation
+        activeLever.userData.handle.rotation.x = Math.PI / 4;
+    }
+    
+    activeLever = null;
+    leverActivationProgress = 0;
+    
+    // Remove progress bar
+    const progressBar = document.getElementById('lever-progress');
+    if (progressBar) {
+        document.body.removeChild(progressBar);
+    }
+    
+    // Clear subtitle if it was for lever activation
+    const subtitle = document.getElementById('subtitle');
+    if (subtitle && subtitle.textContent.includes("lever")) {
+        document.body.removeChild(subtitle);
+    }
+}
+
+// Activate the current lever
+function activateLever() {
+    if (!activeLever) return;
+    
+    activeLever.userData.active = true;
+    
+    // Remove progress bar
+    const progressBar = document.getElementById('lever-progress');
+    if (progressBar) {
+        document.body.removeChild(progressBar);
+    }
+    
+    // Show success message
+    showSubtitle("Lever activated!", 2000);
+    
+    // Check if all levers are now activated
+    checkAllLeversActivated();
+    
+    activeLever = null;
+}
+
+// Check if all levers are activated and activate doors if so
+function checkAllLeversActivated() {
+    const allActivated = levers.every(lever => lever.userData.active);
+    
+    if (allActivated && !doorActivated) {
+        doorActivated = true;
+        activateAllDoors();
+        
+        // Show message that doors are activated
+        setTimeout(() => {
+            showSubtitle("All doors activated!", 3000);
+        }, 2000);
+    }
+}
+
+// Activate all doors
+function activateAllDoors() {
+    console.log("Activating all doors");
+    
+    for (const door of doors) {
+        door.userData.active = true;
+        
+        // Change door appearance to indicate activation
+        door.material.color.set(0x00AA00); // Green tint
+        
+        // Update door bounding box to reflect new interactive state
+        door.userData.boundingBox.setFromObject(door);
+    }
+    
+    console.log("Total doors activated:", doors.length);
+}
+
+// Check if player is touching an activated door to trigger escape ending
+function checkDoorEscapeCollision() {
+    // If already activating a door, skip the check
+    if (activeDoor) return;
+    
+    // Only check for door interaction if F key is pressed
+    if (!leverKeyPressed) return;
+    
+    // Create a bounding sphere for the player with larger radius for easier interaction
+    const playerPos = camera.position.clone();
+    const interactionRadius = 1.5; // Increased from collisionDistance
+    const playerBoundingSphere = new THREE.Sphere(playerPos, interactionRadius);
+    
+    // Debug log to help troubleshoot
+    console.log("Checking for door interaction, F key pressed:", leverKeyPressed);
+    
+    // Check each door
+    for (const door of doors) {
+        // Only check activated doors
+        if (!door.userData.active) {
+            console.log("Skipping inactive door");
+            continue;
+        }
+        
+        console.log("Checking distance to activated door");
+        
+        // Check if player is close to this door
+        if (door.userData.boundingBox.intersectsSphere(playerBoundingSphere)) {
+            console.log("Player is near door and pressing F - starting escape sequence");
+            
+            // Start door escape sequence
+            startDoorEscapeSequence(door);
+            return;
+        } else {
+            // Calculate distance for debugging
+            const doorCenter = new THREE.Vector3();
+            door.userData.boundingBox.getCenter(doorCenter);
+            const distance = playerPos.distanceTo(doorCenter);
+            console.log("Door detected but too far:", distance, "meters");
+        }
+    }
+    
+    if (doors.length === 0) {
+        console.log("No doors found in the level");
+    } else if (doors.filter(d => d.userData.active).length === 0) {
+        console.log("No activated doors found");
+    }
+}
+
+// Start the door escape sequence
+function startDoorEscapeSequence(door) {
+    activeDoor = door;
+    doorEscapeStartTime = performance.now();
+    doorEscapeProgress = 0;
+    
+    // Show subtitle for feedback
+    showSubtitle("Hold F to escape through the door...", requiredDoorHoldTime + 500);
+    
+    // Create progress bar
+    createDoorEscapeProgressBar();
+}
+
+// Create a progress bar for door escape
+function createDoorEscapeProgressBar() {
+    // Remove existing progress bar if present
+    let progressBar = document.getElementById('door-escape-progress');
+    if (!progressBar) {
+        progressBar = document.createElement('div');
+        progressBar.id = 'door-escape-progress';
+        progressBar.style.position = 'absolute';
+        progressBar.style.bottom = '10%';
+        progressBar.style.left = '50%';
+        progressBar.style.transform = 'translateX(-50%)';
+        progressBar.style.width = '300px'; // Wider than lever progress bar
+        progressBar.style.height = '20px';
+        progressBar.style.backgroundColor = '#333';
+        progressBar.style.border = '2px solid #FFF';
+        
+        const progressFill = document.createElement('div');
+        progressFill.id = 'door-escape-progress-fill';
+        progressFill.style.width = '0%';
+        progressFill.style.height = '100%';
+        progressFill.style.backgroundColor = '#00AA00'; // Green for door escape
+        
+        progressBar.appendChild(progressFill);
+        document.body.appendChild(progressBar);
+    }
+}
+
+// Game escape ending
+function gameEscape() {
+    console.log("Player escaped!");
+    gameState = "GAME_OVER";
+    controls.unlock();
+    
+    // Stop all sounds
+    if (audioInitialized) {
+        if (electricalHumSound && electricalHumSound.isPlaying) electricalHumSound.stop();
+        if (lunasiaSound && lunasiaSound.isPlaying) lunasiaSound.stop();
+        if (footstepSound && footstepSound.isPlaying) footstepSound.stop();
+        if (waterDripSound && waterDripSound.isPlaying) waterDripSound.stop();
+    }
+    
+    // Show escape screen instead of game over screen
+    showEscapeScreen();
+}
+
+// Show the escape screen
+function showEscapeScreen() {
+    const escapeScreen = document.createElement('div');
+    escapeScreen.id = 'escape-screen';
+    escapeScreen.style.position = 'absolute';
+    escapeScreen.style.width = '100%';
+    escapeScreen.style.height = '100%';
+    escapeScreen.style.backgroundColor = 'rgba(0, 0, 0, 0.9)';
+    escapeScreen.style.top = '0';
+    escapeScreen.style.left = '0';
+    escapeScreen.style.display = 'flex';
+    escapeScreen.style.flexDirection = 'column';
+    escapeScreen.style.justifyContent = 'center';
+    escapeScreen.style.alignItems = 'center';
+    escapeScreen.style.zIndex = '1000';
+    escapeScreen.style.fontFamily = '"Courier New", monospace';
+    
+    const escapeText = document.createElement('h1');
+    escapeText.textContent = 'You escaped?';
+    escapeText.style.color = '#00AA00'; // Green text for escape message
+    escapeText.style.fontSize = '5em';
+    escapeText.style.fontWeight = 'bold';
+    escapeText.style.marginBottom = '1em';
+    
+    const restartButton = document.createElement('button');
+    restartButton.textContent = 'Restart';
+    restartButton.style.padding = '1em 2em';
+    restartButton.style.fontSize = '1.5em';
+    restartButton.style.backgroundColor = '#333';
+    restartButton.style.color = 'white';
+    restartButton.style.border = 'none';
+    restartButton.style.borderRadius = '5px';
+    restartButton.style.cursor = 'pointer';
+    
+    restartButton.addEventListener('click', function() {
+        location.reload(); // Simple way to restart the game
+    });
+    
+    escapeScreen.appendChild(escapeText);
+    escapeScreen.appendChild(restartButton);
+    document.body.appendChild(escapeScreen);
+}
+
+// Update door escape progress
+function updateDoorEscapeProgress() {
+    if (!activeDoor || !leverKeyPressed) return;
+    
+    const playerPos = camera.position.clone();
+    const interactionRadius = 1.5; // Use same larger radius as in checkDoorEscapeCollision
+    
+    // Create a bounding sphere for the player
+    const playerBoundingSphere = new THREE.Sphere(playerPos, interactionRadius);
+    
+    // Make sure player is still close enough to the door
+    if (!activeDoor.userData.boundingBox.intersectsSphere(playerBoundingSphere)) {
+        console.log("Player moved away from door - resetting escape sequence");
+        resetDoorEscapeProgress();
+        return;
+    }
+    
+    // Calculate progress
+    const currentTime = performance.now();
+    const elapsedTime = currentTime - doorEscapeStartTime;
+    doorEscapeProgress = Math.min(100, (elapsedTime / requiredDoorHoldTime) * 100);
+    
+    // Update progress bar
+    const progressFill = document.getElementById('door-escape-progress-fill');
+    if (progressFill) {
+        progressFill.style.width = doorEscapeProgress + '%';
+    }
+    
+    console.log("Door escape progress:", Math.round(doorEscapeProgress) + "%");
+    
+    // Check if escape is complete
+    if (doorEscapeProgress >= 100) {
+        console.log("Door escape complete!");
+        // Player has escaped - end the game with a special message
+        gameEscape();
+    }
+}
+
+// Reset door escape progress
+function resetDoorEscapeProgress() {
+    activeDoor = null;
+    doorEscapeProgress = 0;
+    
+    // Remove progress bar
+    const progressBar = document.getElementById('door-escape-progress');
+    if (progressBar) {
+        document.body.removeChild(progressBar);
+    }
+    
+    // Clear subtitle if it was for door escape
+    const subtitle = document.getElementById('subtitle');
+    if (subtitle && subtitle.textContent.includes("door")) {
+        document.body.removeChild(subtitle);
+    }
 }
 
 // Start the application
