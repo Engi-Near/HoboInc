@@ -617,21 +617,110 @@ function checkScheduledDialogues() {
     }
 }
 
-// Create a white wireframe box in the player's right hand
+// Create a more advanced LIDAR scanner device in the player's hand
 function createHandBox() {
-    const boxGeometry = new THREE.BoxGeometry(0.2, 0.2, 0.4);
+    // Create a group to hold all parts of the device
+    const deviceGroup = new THREE.Group();
+    
+    // Box dimensions
+    const boxWidth = 0.24;
+    const boxHeight = 0.08;
+    const boxDepth = 0.3;
+    
+    // 1. Create the main flattened box (base of the device)
+    const boxGeometry = new THREE.BoxGeometry(boxWidth, boxHeight, boxDepth);
     const edges = new THREE.EdgesGeometry(boxGeometry);
-    handBox = new THREE.LineSegments(
+    const mainBox = new THREE.LineSegments(
         edges,
         new THREE.LineBasicMaterial({ 
-            color: 0x000000, // Pure black
-            opacity: 0.0,
+            color: 0xffffff,
+            opacity: 1.0,
             transparent: true
         })
     );
+    deviceGroup.add(mainBox);
     
-    // Position the box to appear in the bottom right of the view
-    handBox.position.set(0.4, -0.3, -0.6);
+    // Add solid box to make it fully opaque
+    const solidBox = new THREE.Mesh(
+        boxGeometry,
+        new THREE.MeshBasicMaterial({
+            color: 0x111111, // Very dark gray
+            opacity: 1.0,
+            transparent: false
+        })
+    );
+    deviceGroup.add(solidBox);
+    
+    // 2. Create a tube extending from the front
+    const tubeGeometry = new THREE.CylinderGeometry(0.02, 0.02, 0.15, 8);
+    const tubeEdges = new THREE.EdgesGeometry(tubeGeometry);
+    const tube = new THREE.LineSegments(
+        tubeEdges,
+        new THREE.LineBasicMaterial({ color: 0xffffff })
+    );
+    // Position the tube at the front of the box, rotated to point forward
+    tube.rotation.x = Math.PI / 2;
+    tube.position.set(0, 0, -0.2);
+    deviceGroup.add(tube);
+    
+    // Add solid cylinder for the tube
+    const tubeSolid = new THREE.Mesh(
+        tubeGeometry,
+        new THREE.MeshBasicMaterial({ 
+            color: 0x111111, // Very dark gray
+            opacity: 1.0,
+            transparent: false
+        })
+    );
+    tubeSolid.rotation.x = Math.PI / 2;
+    tubeSolid.position.set(0, 0, -0.2);
+    deviceGroup.add(tubeSolid);
+    
+    // 3. Create an angled panel on top
+    const panelGeometry = new THREE.PlaneGeometry(0.15, 0.1);
+    const panelEdges = new THREE.EdgesGeometry(panelGeometry);
+    const panel = new THREE.LineSegments(
+        panelEdges,
+        new THREE.LineBasicMaterial({ color: 0xffffff })
+    );
+    // Position and angle the panel on top
+    panel.rotation.x = -Math.PI / 4; // 45-degree angle
+    panel.position.set(0, 0.05, -0.08);
+    deviceGroup.add(panel);
+    
+    // Add solid panel face (front side)
+    const panelFaceFront = new THREE.Mesh(
+        panelGeometry,
+        new THREE.MeshBasicMaterial({ 
+            color: 0x111111, // Very dark gray
+            opacity: 1.0,
+            transparent: false,
+            side: THREE.FrontSide
+        })
+    );
+    panelFaceFront.rotation.x = -Math.PI / 4;
+    panelFaceFront.position.set(0, 0.05, -0.08);
+    deviceGroup.add(panelFaceFront);
+    
+    // Add solid panel face (back side)
+    const panelFaceBack = new THREE.Mesh(
+        panelGeometry,
+        new THREE.MeshBasicMaterial({ 
+            color: 0x111111, // Very dark gray
+            opacity: 1.0,
+            transparent: false,
+            side: THREE.BackSide
+        })
+    );
+    panelFaceBack.rotation.x = -Math.PI / 4;
+    panelFaceBack.position.set(0, 0.05, -0.08);
+    deviceGroup.add(panelFaceBack);
+    
+    // Position the entire device to appear in the bottom right of the view
+    deviceGroup.position.set(0.4, -0.3, -0.6);
+    
+    // Add to camera
+    handBox = deviceGroup;
     camera.add(handBox);
     scene.add(camera);
 }
