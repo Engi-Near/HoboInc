@@ -3,25 +3,60 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Lunasia's Game</title>
+    <title>Lunasia</title>
     <style>
-        body { margin: 0; overflow: hidden; }
+        body { margin: 0; overflow: hidden; background: #000; }
         canvas { display: block; }
-        #instructions {
+        #webgl-error {
+            display: none;
             position: absolute;
-            top: 10px;
-            left: 10px;
-            background: rgba(0,0,0,0.5);
-            color: white;
-            padding: 10px;
-            border-radius: 5px;
-            font-family: Arial, sans-serif;
+            inset: 0;
+            color: #fff;
+            font-family: Georgia, "Times New Roman", serif;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 2rem;
+            background: #000;
         }
     </style>
 </head>
 <body>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="Lunasia/PointerLockControls.js"></script>
-    <script src="Lunasia/main.js"></script>
+    <div id="webgl-error">
+        <div>
+            <h1>Lunasia</h1>
+            <p>WebGL is required to run this game. Please enable WebGL in your browser or try another browser.</p>
+        </div>
+    </div>
+    <script>
+        (function () {
+            function hasWebGL() {
+                try {
+                    var canvas = document.createElement('canvas');
+                    return !!(window.WebGLRenderingContext &&
+                        (canvas.getContext('webgl') || canvas.getContext('experimental-webgl')));
+                } catch (e) {
+                    return false;
+                }
+            }
+            if (!hasWebGL()) {
+                document.getElementById('webgl-error').style.display = 'flex';
+                return;
+            }
+            var three = document.createElement('script');
+            three.src = 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js';
+            three.onload = function () {
+                var controls = document.createElement('script');
+                controls.src = 'Lunasia/PointerLockControls.js';
+                controls.onload = function () {
+                    var main = document.createElement('script');
+                    main.src = 'Lunasia/main.js';
+                    document.body.appendChild(main);
+                };
+                document.body.appendChild(controls);
+            };
+            document.body.appendChild(three);
+        })();
+    </script>
 </body>
-</html> 
+</html>
