@@ -61,6 +61,10 @@ class PointerLockControls {
     
     onMouseMove(event) {
         if (this.isLocked) {
+            // Tutorial door drag steals look input while E is held on a door
+            if (window.blockPointerLook) {
+                return;
+            }
             const movementX = event.movementX || 0;
             const movementY = event.movementY || 0;
             

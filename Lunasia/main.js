@@ -14,14 +14,21 @@ let walls = [];
 let floor, roof; // References to floor and roof for raycasting
 let collisionDistance = 0.5; // Distance to check for collisions
 let handBox; // Reference to the box in hand
-let dots = []; // Array to store dot objects
+let dots = null; // Circular buffer metadata for lidar cubes
 let isClicking = false; // Track if mouse is being held down
 let raycaster = new THREE.Raycaster(); // Raycaster for projecting rays
 let rayInterval; // Interval for ray projection
 let lastRayTime = 0; // Time tracking for ray projection rate limiting
 let maxDots = 50000; // Increased maximum number of dots due to higher rate
 let dotGeometry; // Reusable geometry for dots
-let dotLifetime = 30; // Dot lifetime in seconds
+let dotMesh = null; // InstancedMesh for all lidar cubes (single WebGL draw call)
+let dotLifetime = 30; // Dot lifetime in seconds (15 once chase phase starts)
+let _dotMatrix = null; // Reused matrix for instance updates
+let _dotColor = null; // Reused color for instance updates
+let _dotDummy = null; // Reused Object3D for matrix composition
+let _dotWriteIndex = 0; // Next circular slot for a new cube
+let _dotCreationTimes = null; // creationTime per instance slot
+let _dotActiveCount = 0; // How many slots have been written (up to maxDots)
 
 // Audio variables
 let audioListener = null;
@@ -29,20 +36,26 @@ let audioContext = null;
 let audioInitialized = false; // Flag to track if audio is initialized
 let electricalHumSound;
 let lunasiaSound;
-let footstepSound;
-let waterDripSound;
+let walkSound;
+let runSound;
+let buttonClickSound;
+let lunasiaWalkSound;
 let isMoving = false;
 let lastFootstepTime = 0;
-let footstepInterval = 400; // ms between footstep sounds
+let footstepInterval = 400; // ms between footstep sound events (hearing pulses)
+let lastLidarSoundTime = 0;
 
 // Game state variables
 let gameState = "LOADING"; // LOADING, PLAYING, PAUSED, GAME_OVER
+let gamePhase = "tutorial"; // tutorial | chase
 let gameStartTime = 0;
 let totalGameTime = 0; // Track total game time
 let pauseStartTime = 0; // Track when the game was paused
 let enemy = null;
 let subtitle = null;
 let subtitleTimeout = null;
+let playerSpawnPosition = new THREE.Vector3();
+let dotsDecayEnabled = false;
 
 // Add these new variables at the top of the file with the other global variables
 let navigationGrid = []; // Grid representation of the map for pathfinding
@@ -69,15 +82,31 @@ let levers = []; // Array to store lever objects
 let leverActivationProgress = 0; // Progress of current lever activation (0-100%)
 let activeLever = null; // Reference to the lever currently being activated
 let leverActivationStartTime = 0; // Time when lever activation started
-let doorActivated = false; // Whether all doors have been activated
-let leverKeyPressed = false; // Whether the F key is currently pressed
-let requiredLeverHoldTime = 5000; // Time in ms required to hold the F key to activate a lever
+let doorActivated = false; // Whether all doors have been unlocked (levers done)
+let interactKeyPressed = false; // Whether the E key is currently pressed
+let requiredLeverHoldTime = 500; // Brief press feedback window (levers activate on E)
 
-// Add variables for door escape activation
-let activeDoor = null; // Reference to the door currently being activated for escape
-let doorEscapeProgress = 0; // Progress of current door escape activation (0-100%)
-let doorEscapeStartTime = 0; // Time when door escape activation started
-let requiredDoorHoldTime = 10000; // Time in ms required to hold the F key to escape through a door
+// Door drag / tutorial exit
+let activeDoor = null; // Door currently being dragged
+let doorEscapeProgress = 0; // Unused legacy; drag uses doorDragOpen
+let doorEscapeStartTime = 0;
+let requiredDoorHoldTime = 10000;
+let doorDragOpen = 0; // legacy name — now meters slid open
+let doorSlideVelocity = 0;
+let doorSlideMax = 4.0; // meters to clear the doorway
+let isDraggingDoor = false;
+let doorsFullyOpen = false;
+let lunasiaSpawned = false;
+let secondHalfStarted = false;
+let helpTextEl = null;
+let controlsHelpEl = null;
+let controlsHelpVisible = false;
+
+// Lunasia hearing / search AI
+let lunasiaAI = null;
+
+// Block camera look while dragging a door (read by PointerLockControls)
+window.blockPointerLook = false;
 
 // Add these dialogue-related variables at the top of the file with other global variables
 let scheduledDialogues = []; // Array to store scheduled dialogues with their timing
@@ -93,14 +122,19 @@ function init() {
     camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
     camera.position.y = 1.7; // Eye level height
     
-    // Create renderer with optimizations
+    // Create WebGL renderer with performance-focused settings
     renderer = new THREE.WebGLRenderer({ 
-        antialias: true,
-        precision: 'mediump', // Better performance than highp
-        powerPreference: 'high-performance'
+        antialias: false,
+        alpha: false,
+        precision: 'mediump',
+        powerPreference: 'high-performance',
+        stencil: false,
+        depth: true
     });
     renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.setPixelRatio(window.devicePixelRatio);
+    // Cap pixel ratio — high-DPI screens otherwise multiply fill cost
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
+    renderer.sortObjects = false;
     
     document.body.appendChild(renderer.domElement);
     
@@ -129,6 +163,7 @@ function init() {
     // Add mouse event listeners for ray projection
     document.addEventListener('mousedown', onMouseDown, false);
     document.addEventListener('mouseup', onMouseUp, false);
+    document.addEventListener('mousemove', onDoorDragMouseMove, false);
     
     // Handle ESC key to exit pointer lock
     document.addEventListener('keydown', (event) => {
@@ -140,8 +175,31 @@ function init() {
     // Handle window resize
     window.addEventListener('resize', onWindowResize, false);
     
-    // Create reusable geometry for dots - much smaller for tiny LED look
-    dotGeometry = new THREE.SphereGeometry(0.003, 8, 8);
+    // Shared cube geometry — all lidar hits drawn via one InstancedMesh (WebGL)
+    // 300% larger than the previous 0.012 cubes (4x scale)
+    dotGeometry = new THREE.BoxGeometry(0.048, 0.048, 0.048);
+    _dotMatrix = new THREE.Matrix4();
+    _dotColor = new THREE.Color();
+    _dotDummy = new THREE.Object3D();
+    _dotWriteIndex = 0;
+    _dotActiveCount = 0;
+    _dotCreationTimes = new Float64Array(maxDots);
+    _dotCreationTimes.fill(-Infinity);
+    
+    const dotMaterial = new THREE.MeshBasicMaterial();
+    dotMesh = new THREE.InstancedMesh(dotGeometry, dotMaterial, maxDots);
+    dotMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    // Allocate per-instance color buffer
+    if (typeof dotMesh.setColorAt === 'function') {
+        _dotColor.setHex(0x6fc0ff);
+        dotMesh.setColorAt(0, _dotColor);
+        if (dotMesh.instanceColor) {
+            dotMesh.instanceColor.setUsage(THREE.DynamicDrawUsage);
+        }
+    }
+    dotMesh.count = 0;
+    dotMesh.frustumCulled = false;
+    scene.add(dotMesh);
     
     // Create loading screen before initializing the game
     createLoadingScreen();
@@ -193,7 +251,7 @@ function loadAudioFiles() {
         electricalHumSound.setVolume(0.5);
     });
     
-    // Load lunasia sound for enemy contacts
+    // Load lunasia contact sting
     lunasiaSound = new THREE.Audio(audioListener);
     const lunasiaLoader = new THREE.AudioLoader();
     lunasiaLoader.load('Lunasia/lunasia.mp3', function(buffer) {
@@ -202,26 +260,39 @@ function loadAudioFiles() {
         lunasiaSound.setVolume(0.7);
     });
     
-    // Load footstep sound for movement
-    footstepSound = new THREE.Audio(audioListener);
-    const footstepLoader = new THREE.AudioLoader();
-    footstepLoader.load('Lunasia/skkfootsteps.mp3', function(buffer) {
-        footstepSound.setBuffer(buffer);
-        footstepSound.setLoop(false);
-        footstepSound.setVolume(0.4);
+    // Player walk / run loops
+    walkSound = new THREE.Audio(audioListener);
+    const walkLoader = new THREE.AudioLoader();
+    walkLoader.load('Lunasia/SKKwalk.mp3', function(buffer) {
+        walkSound.setBuffer(buffer);
+        walkSound.setLoop(true);
+        walkSound.setVolume(0.45);
     });
     
-    // Load ambient water drip sound
-    waterDripSound = new THREE.Audio(audioListener);
-    const waterDripLoader = new THREE.AudioLoader();
-    waterDripLoader.load('Lunasia/water_drip.mp3', function(buffer) {
-        waterDripSound.setBuffer(buffer);
-        waterDripSound.setLoop(true);
-        waterDripSound.setVolume(0.3);
-        // Start playing ambient sound immediately after loading
-        if (gameState === "PLAYING") {
-            waterDripSound.play();
-        }
+    runSound = new THREE.Audio(audioListener);
+    const runLoader = new THREE.AudioLoader();
+    runLoader.load('Lunasia/Skkrun.mp3', function(buffer) {
+        runSound.setBuffer(buffer);
+        runSound.setLoop(true);
+        runSound.setVolume(0.55);
+    });
+    
+    // Lunasia movement loop (volume scaled by distance + noise level)
+    lunasiaWalkSound = new THREE.Audio(audioListener);
+    const lunasiaWalkLoader = new THREE.AudioLoader();
+    lunasiaWalkLoader.load('Lunasia/Lunasia Walk.mp3', function(buffer) {
+        lunasiaWalkSound.setBuffer(buffer);
+        lunasiaWalkSound.setLoop(true);
+        lunasiaWalkSound.setVolume(0);
+    });
+    
+    // Load button click for orange lever / panel interactions
+    buttonClickSound = new THREE.Audio(audioListener);
+    const buttonClickLoader = new THREE.AudioLoader();
+    buttonClickLoader.load('Lunasia/button click.mp3', function(buffer) {
+        buttonClickSound.setBuffer(buffer);
+        buttonClickSound.setLoop(false);
+        buttonClickSound.setVolume(0.8);
     });
 }
 
@@ -230,13 +301,11 @@ function handleAudioOnPause(isPaused) {
     if (!audioInitialized) return;
     
     if (isPaused) {
-        // Pause all sounds when game is paused
         if (electricalHumSound && electricalHumSound.isPlaying) electricalHumSound.pause();
-        if (waterDripSound && waterDripSound.isPlaying) waterDripSound.pause();
+        if (walkSound && walkSound.isPlaying) walkSound.pause();
+        if (runSound && runSound.isPlaying) runSound.pause();
+        if (lunasiaWalkSound && lunasiaWalkSound.isPlaying) lunasiaWalkSound.pause();
     } else {
-        // Resume ambient sounds when game is resumed
-        if (waterDripSound && waterDripSound.buffer && !waterDripSound.isPlaying) waterDripSound.play();
-        // Only resume electrical hum if still clicking
         if (isClicking && electricalHumSound && electricalHumSound.buffer && !electricalHumSound.isPlaying) {
             electricalHumSound.play();
         }
@@ -399,6 +468,7 @@ function showSubtitle(message, duration = 5000) {
     
     // Create subtitle element
     subtitle = document.createElement('div');
+    subtitle.id = 'subtitle';
     subtitle.style.position = 'absolute';
     subtitle.style.bottom = '20%';
     subtitle.style.width = '100%';
@@ -409,6 +479,8 @@ function showSubtitle(message, duration = 5000) {
     subtitle.style.fontWeight = 'bold';
     subtitle.style.zIndex = '100';
     subtitle.style.pointerEvents = 'none'; // Prevent it from blocking clicks
+    subtitle.style.padding = '0 10%';
+    subtitle.style.textShadow = '0 2px 8px #000';
     subtitle.textContent = message;
     
     document.body.appendChild(subtitle);
@@ -420,6 +492,84 @@ function showSubtitle(message, duration = 5000) {
             subtitle = null;
         }
     }, duration);
+}
+
+// Yellow help text at the top of the screen
+function showHelpText(message) {
+    if (!helpTextEl) {
+        helpTextEl = document.createElement('div');
+        helpTextEl.id = 'help-text';
+        helpTextEl.style.position = 'absolute';
+        helpTextEl.style.top = '18px';
+        helpTextEl.style.left = '50%';
+        helpTextEl.style.transform = 'translateX(-50%)';
+        helpTextEl.style.maxWidth = '80%';
+        helpTextEl.style.textAlign = 'center';
+        helpTextEl.style.color = '#ffeb3b';
+        helpTextEl.style.fontFamily = 'Helvetica, Arial, sans-serif';
+        helpTextEl.style.fontSize = '0.95em';
+        helpTextEl.style.fontWeight = 'normal';
+        helpTextEl.style.zIndex = '110';
+        helpTextEl.style.pointerEvents = 'none';
+        helpTextEl.style.textShadow = '0 1px 4px #000';
+        helpTextEl.style.lineHeight = '1.4';
+        document.body.appendChild(helpTextEl);
+    }
+    helpTextEl.textContent = message;
+    helpTextEl.style.display = 'block';
+}
+
+function hideHelpText() {
+    if (helpTextEl) {
+        helpTextEl.style.display = 'none';
+    }
+}
+
+function toggleControlsHelp() {
+    if (controlsHelpVisible) {
+        hideControlsHelp();
+    } else {
+        showControlsHelp();
+    }
+}
+
+function showControlsHelp() {
+    if (!controlsHelpEl) {
+        controlsHelpEl = document.createElement('div');
+        controlsHelpEl.id = 'controls-help';
+        controlsHelpEl.style.position = 'absolute';
+        controlsHelpEl.style.top = '50%';
+        controlsHelpEl.style.left = '50%';
+        controlsHelpEl.style.transform = 'translate(-50%, -50%)';
+        controlsHelpEl.style.background = 'rgba(0,0,0,0.85)';
+        controlsHelpEl.style.color = '#fff';
+        controlsHelpEl.style.padding = '1.5em 2em';
+        controlsHelpEl.style.fontFamily = 'Helvetica, Arial, sans-serif';
+        controlsHelpEl.style.fontSize = '1em';
+        controlsHelpEl.style.lineHeight = '1.7';
+        controlsHelpEl.style.zIndex = '200';
+        controlsHelpEl.style.border = '1px solid #666';
+        controlsHelpEl.style.maxWidth = '420px';
+        controlsHelpEl.innerHTML =
+            '<div style="font-size:1.2em;margin-bottom:0.6em;color:#ffeb3b;">Controls</div>' +
+            'W A S D — Move<br>' +
+            'Mouse — Look<br>' +
+            'Left Click — Scan with scanner<br>' +
+            'E — Interact / grab &amp; drag<br>' +
+            'Shift — Sprint<br>' +
+            'H — Toggle this help<br>' +
+            'Esc — Pause';
+        document.body.appendChild(controlsHelpEl);
+    }
+    controlsHelpEl.style.display = 'block';
+    controlsHelpVisible = true;
+}
+
+function hideControlsHelp() {
+    if (controlsHelpEl) {
+        controlsHelpEl.style.display = 'none';
+    }
+    controlsHelpVisible = false;
 }
 
 // Show the game over screen
@@ -553,33 +703,55 @@ function startGame() {
     // Create the box in hand
     createHandBox();
     
-    // Start ambient sound if audio is initialized
-    if (audioInitialized && waterDripSound && waterDripSound.buffer && !waterDripSound.isPlaying) {
-        waterDripSound.play();
-    }
+    gamePhase = "tutorial";
+    secondHalfStarted = false;
+    dotsDecayEnabled = false;
+    dotLifetime = 30;
+    doorSlideVelocity = 0;
     
     // Clear any previously scheduled dialogues
     scheduledDialogues = [];
+    lunasiaSpawned = false;
+    doorDragOpen = 0;
+    isDraggingDoor = false;
+    doorsFullyOpen = false;
+    window.blockPointerLook = false;
+    hideHelpText();
+    hideControlsHelp();
     
-    // Schedule all dialogues based on game time
-    scheduleDialogue(0, "Hello Commander. I was bored, and wanted to play a game with you. Why don't you get yourself acquainted. Look around a little.");
-    scheduleDialogue(30, "Aww, you look cute down there, getting your bearings. Why don't I join you?");
-    scheduleDialogue(32, null, () => createEnemy()); // Spawn enemy at 32 seconds (2 seconds after dialogue)
-    scheduleDialogue(60, "Want out? There's a door, but its locked~");
-    scheduleDialogue(90, "You need to find some levers on the ground. They're a little small though, unlike you.");
-    scheduleDialogue(120, "Wondering how many there are? I'd tell you... if you give me a reward~");
-    scheduleDialogue(150, "Commander, aren't you struggling a little? Just stay still, and let me come to you.");
+    // Tutorial opening sequence — Lunasia does not spawn in the first room
+    scheduleDialogue(0,
+        "Good morning commander~ Or is it good evening, I doubt you can tell.",
+        null, 6000);
+    scheduleDialogue(6,
+        "As you can see, I turned off all the lights! I wanted to play a game with you.",
+        null, 6000);
+    scheduleDialogue(12,
+        "Why don't you take a look around the room.",
+        null, 8000,
+        "Check controls with H. left click to scan with your scanner");
+    // 15s after Opening pt3
+    scheduleDialogue(27,
+        "How do you like the room~ If you keep looking, there's levers on the floor.",
+        null, 9000,
+        "Orange objects are interactable panels. Blue objects are terrain. Green Objects can be grabbed and dragged. Interacting with objects is 'E'");
+    // 20s after Opening pt4
+    scheduleDialogue(47,
+        "Well, if you can find your way out of here~ I'll be waiting in the next room.",
+        null, 8000);
     
     // Show the first message immediately
-    showSubtitle(scheduledDialogues[0].message, 5000);
+    showSubtitle(scheduledDialogues[0].message, scheduledDialogues[0].duration);
 }
 
 // Schedule a dialogue message at a specific game time
-function scheduleDialogue(timeInSeconds, message, callback = null) {
+function scheduleDialogue(timeInSeconds, message, callback = null, duration = 5000, helpText = null) {
     scheduledDialogues.push({
         timeInSeconds: timeInSeconds,
         message: message,
         callback: callback,
+        duration: duration,
+        helpText: helpText,
         triggered: timeInSeconds === 0 // Mark the first one as triggered since we show it immediately
     });
 }
@@ -606,7 +778,11 @@ function checkScheduledDialogues() {
             
             // Show the dialogue message if there is one
             if (dialogue.message) {
-                showSubtitle(dialogue.message, 5000);
+                showSubtitle(dialogue.message, dialogue.duration || 5000);
+            }
+            
+            if (dialogue.helpText) {
+                showHelpText(dialogue.helpText);
             }
             
             // Execute callback if provided
@@ -727,6 +903,14 @@ function createHandBox() {
 
 // Create the map based on the provided layout
 function createMap() {
+    // Reset world collections for a clean tutorial start
+    walls = [];
+    doors = [];
+    levers = [];
+    doorActivated = false;
+    doorsFullyOpen = false;
+    doorDragOpen = 0;
+    
     // Define the map layout where O is open space and # is a wall
     const mapLayout = [
         "L........#............................................====..",
@@ -857,6 +1041,7 @@ function createMap() {
     
     // Set initial camera position in an empty area of the map (middle right section)
     camera.position.set(offsetX + 40, 1.7, offsetZ + 15);
+    playerSpawnPosition.set(offsetX + 40, 1.7, offsetZ + 15);
     
     // Create the navigation grid for pathfinding
     createNavigationGrid(mapLayout, offsetX, offsetZ, cellSize);
@@ -1325,8 +1510,9 @@ function distance(x1, z1, x2, z2) {
     return Math.sqrt(distanceSquared(x1, z1, x2, z2));
 }
 
-// Handle mouse down event - start projecting rays
+// Handle mouse down event - start projecting rays (left click only)
 function onMouseDown(event) {
+    if (event.button !== 0) return; // Left click = scanner
     if (controls.isLocked && gameState === "PLAYING") {
         isClicking = true;
         // Directly project a ray rather than starting an interval
@@ -1341,6 +1527,7 @@ function onMouseDown(event) {
 
 // Handle mouse up event - stop projecting rays
 function onMouseUp(event) {
+    if (event.button !== 0) return;
     isClicking = false;
     
     // Stop electrical hum sound when scanner is inactive
@@ -1351,13 +1538,11 @@ function onMouseUp(event) {
 
 // Project a ray with random 75-degree offset
 function projectRay() {
-    // Only project a ray if we're clicking and at the correct interval and game is playing
-    const currentTime = performance.now();
-    if (gameState !== "PLAYING" || !isClicking || (currentTime - lastRayTime < 1)) {
+    if (gameState !== "PLAYING" || !isClicking) {
         return;
     }
     
-    lastRayTime = currentTime;
+    lastRayTime = performance.now();
     
     // Get camera direction
     const cameraDirection = new THREE.Vector3(0, 0, -1);
@@ -1449,114 +1634,115 @@ function getMaterialType(object) {
 
 // Create a dim LED-like dot at the specified position
 function createDot(position, materialType) {
-    // Base color depends on material type
-    let color;
+    // Same colors as original — solid cubes, no glow / no fade
+    let colorHex = 0x6fc0ff;
     
     if (materialType === "enemy") {
-        color = new THREE.Color(0xff0000); // Red for enemy
+        colorHex = 0xff0000;
         
         // Play lunasia sound when dot contacts enemy
         if (audioInitialized && lunasiaSound && lunasiaSound.buffer && !lunasiaSound.isPlaying) {
             lunasiaSound.play();
         }
     } else if (materialType === "lever") {
-        color = new THREE.Color(0xff8000); // Orange for levers
+        colorHex = 0xff8000;
     } else if (materialType === "door") {
-        // Doors are blue when inactive, green when active
         const doorObj = doors.find(door => 
             door.userData.material === "door" && 
             door.position.distanceTo(position) < 0.5
         );
         
         if (doorObj && doorObj.userData.active) {
-            color = new THREE.Color(0x00ff00); // Green for active doors
+            colorHex = 0x00ff00;
         } else {
-            color = new THREE.Color(0x6fc0ff); // Blue for inactive doors (same as concrete)
-        }
-    } else {
-        color = new THREE.Color(0x6fc0ff); // Blue for concrete
-    }
-    
-    // If we've reached the maximum number of dots, remove the oldest one
-    if (dots.length >= maxDots) {
-        const oldestDot = dots.shift(); // Remove the oldest dot
-        scene.remove(oldestDot); // Remove it from the scene
-        if (oldestDot.userData.brightDot && oldestDot.userData.brightDot.material) {
-            oldestDot.userData.brightDot.material.dispose();
-        }
-        if (oldestDot.userData.glowDot && oldestDot.userData.glowDot.material) {
-            oldestDot.userData.glowDot.material.dispose();
+            colorHex = 0x6fc0ff;
         }
     }
     
-    // Create the main bright center dot
-    const brightMaterial = new THREE.MeshBasicMaterial({
-        color: color,
-        transparent: true,
-        opacity: 1.0
-    });
+    const index = _dotWriteIndex;
+    _dotWriteIndex = (_dotWriteIndex + 1) % maxDots;
+    if (_dotActiveCount < maxDots) {
+        _dotActiveCount++;
+    }
     
-    const brightDot = new THREE.Mesh(dotGeometry, brightMaterial);
-    brightDot.position.copy(position);
+    _dotDummy.position.copy(position);
+    _dotDummy.scale.set(1, 1, 1);
+    _dotDummy.rotation.set(0, 0, 0);
+    _dotDummy.updateMatrix();
+    dotMesh.setMatrixAt(index, _dotDummy.matrix);
     
-    // Create a slightly larger glow around the main dot (1/100th size)
-    const glowGeometry = new THREE.SphereGeometry(0.06, 8, 8);
-    const glowMaterial = new THREE.MeshBasicMaterial({
-        color: color,
-        transparent: true,
-        opacity: 0.5,
-        blending: THREE.AdditiveBlending
-    });
+    if (typeof dotMesh.setColorAt === 'function') {
+        _dotColor.setHex(colorHex);
+        dotMesh.setColorAt(index, _dotColor);
+        if (dotMesh.instanceColor) {
+            dotMesh.instanceColor.needsUpdate = true;
+        }
+    }
     
-    const glowDot = new THREE.Mesh(glowGeometry, glowMaterial);
-    glowDot.position.copy(position);
-    
-    // Create a group to hold both parts
-    const dotGroup = new THREE.Group();
-    dotGroup.add(brightDot);
-    dotGroup.add(glowDot);
-    
-    // Add creation time for fading
-    dotGroup.userData.creationTime = performance.now();
-    dotGroup.userData.brightDot = brightDot;
-    dotGroup.userData.glowDot = glowDot;
-    dotGroup.userData.materialType = materialType;
-    
-    // Add the dot group to the scene
-    scene.add(dotGroup);
-    
-    // Add to the dots array for managing later
-    dots.push(dotGroup);
+    _dotCreationTimes[index] = performance.now();
+    dotMesh.count = _dotActiveCount;
+    dotMesh.instanceMatrix.needsUpdate = true;
 }
 
-// Update and fade dots - LED-like effect with no pulsing
+// Clear all lidar cubes
+function clearAllDots() {
+    _dotWriteIndex = 0;
+    _dotActiveCount = 0;
+    if (_dotCreationTimes) {
+        _dotCreationTimes.fill(-Infinity);
+    }
+    if (dotMesh) {
+        dotMesh.count = 0;
+        dotMesh.instanceMatrix.needsUpdate = true;
+    }
+}
+
+// Hide expired cubes; in chase phase, slowly scale-fade over lifetime
 function updateDots() {
-    const currentTime = performance.now();
-    const dotsToRemove = [];
+    if (!dotMesh || _dotActiveCount === 0) return;
     
-    for (let i = 0; i < dots.length; i++) {
-        const dot = dots[i];
-        const brightDot = dot.userData.brightDot;
-        const glowDot = dot.userData.glowDot;
-        const age = (currentTime - dot.userData.creationTime) / 1000; // age in seconds
-        
-        if (age > dotLifetime) {
-            // Remove dots older than dot lifetime (15 seconds)
-            scene.remove(dot);
-            dotsToRemove.push(i);
+    const currentTime = performance.now();
+    const lifetimeMs = dotLifetime * 1000;
+    let needsUpdate = false;
+    
+    // Cull expired from oldest end of ring
+    let i = (_dotActiveCount < maxDots) ? 0 : _dotWriteIndex;
+    for (let n = 0; n < _dotActiveCount; n++) {
+        const created = _dotCreationTimes[i];
+        if (created !== -Infinity && (currentTime - created) > lifetimeMs) {
+            _dotDummy.position.set(0, 0, 0);
+            _dotDummy.scale.set(0, 0, 0);
+            _dotDummy.updateMatrix();
+            dotMesh.setMatrixAt(i, _dotDummy.matrix);
+            _dotCreationTimes[i] = -Infinity;
+            needsUpdate = true;
+            i = (i + 1) % maxDots;
         } else {
-            // Calculate fade factor (1 to 0 over dot lifetime)
-            const fadeFactor = 1 - age / dotLifetime;
-            
-            // Apply fade to dot material opacity
-            brightDot.material.opacity = fadeFactor;
-            glowDot.material.opacity = fadeFactor * 0.5; // Glow is half as bright
+            break;
         }
     }
     
-    // Remove old dots from the array (in reverse order to avoid index issues)
-    for (let i = dotsToRemove.length - 1; i >= 0; i--) {
-        dots.splice(dotsToRemove[i], 1);
+    // Slow decay fade during chase (every other frame for cost)
+    if (dotsDecayEnabled && (Math.floor(currentTime / 32) % 2 === 0)) {
+        const limit = (_dotActiveCount < maxDots) ? _dotActiveCount : maxDots;
+        for (let idx = 0; idx < limit; idx++) {
+            const created = _dotCreationTimes[idx];
+            if (created === -Infinity) continue;
+            const age = (currentTime - created) / lifetimeMs;
+            if (age >= 1) continue;
+            const fade = Math.max(0.05, 1 - age);
+            dotMesh.getMatrixAt(idx, _dotMatrix);
+            _dotDummy.position.setFromMatrixPosition(_dotMatrix);
+            _dotDummy.scale.set(fade, fade, fade);
+            _dotDummy.rotation.set(0, 0, 0);
+            _dotDummy.updateMatrix();
+            dotMesh.setMatrixAt(idx, _dotDummy.matrix);
+            needsUpdate = true;
+        }
+    }
+    
+    if (needsUpdate) {
+        dotMesh.instanceMatrix.needsUpdate = true;
     }
 }
 
@@ -1730,7 +1916,9 @@ function createDoor(x, z, size, height, material) {
     
     door.userData.boundingBox = boundingBox;
     door.userData.material = "door"; // Tag as door material for scanning
-    door.userData.active = false; // Initially not active
+    door.userData.active = false; // Initially not active (locked)
+    door.userData.closedPosition = door.position.clone();
+    door.userData.closedRotationY = 0;
     
     // Store door for collision detection and state management
     doors.push(door);
@@ -1897,18 +2085,16 @@ function onKeyDown(event) {
         case 'ShiftRight':
             sprint = true;
             break;
-        case 'KeyF':
-            // Start lever activation if not already pressing
-            if (!leverKeyPressed) {
-                console.log("F key pressed - checking for interactions");
-                leverKeyPressed = true;
-                
-                // First check lever interaction
+        case 'KeyH':
+            toggleControlsHelp();
+            break;
+        case 'KeyE':
+            // Interact: levers (press) or grab/drag green doors
+            if (!interactKeyPressed) {
+                interactKeyPressed = true;
                 checkLeverInteraction();
-                
-                // Also immediately check door interaction (redundant but helpful for debugging)
                 if (doorActivated && !activeLever) {
-                    checkDoorEscapeCollision();
+                    tryStartDoorDrag();
                 }
             }
             break;
@@ -1936,19 +2122,12 @@ function onKeyUp(event) {
         case 'ShiftRight':
             sprint = false;
             break;
-        case 'KeyF':
-            // Cancel lever activation
-            console.log("F key released");
-            leverKeyPressed = false;
+        case 'KeyE':
+            interactKeyPressed = false;
             if (activeLever) {
-                console.log("Canceling lever activation");
                 resetLeverActivation();
             }
-            // Also cancel door escape if in progress
-            if (activeDoor) {
-                console.log("Canceling door escape");
-                resetDoorEscapeProgress();
-            }
+            stopDoorDrag();
             break;
     }
 }
@@ -1984,9 +2163,17 @@ function animate() {
             cleanupPathfindingCache();
         }
         
-        // Project rays in the animation loop instead of using intervals
+        // Project rays — previous 6/frame; +100% => 12/frame
         if (isClicking) {
-            projectRay();
+            for (let r = 0; r < 12; r++) {
+                projectRay();
+            }
+            
+            // Local LIDAR noise pulses while scanning (chase phase)
+            if (gamePhase === "chase" && currentTime - lastLidarSoundTime > 200) {
+                lastLidarSoundTime = currentTime;
+                emitPlayerSound("lidar", false);
+            }
         }
         
         // Update enemy if it exists
@@ -2037,14 +2224,14 @@ function animate() {
         }
         
         // Check if player is moving
-        const wasMoving = isMoving;
         isMoving = moveForward || moveBackward || moveLeft || moveRight;
         
-        // Handle footstep sounds
-        if (isMoving) {
-            // Play footstep sound at intervals
+        // Walk / run loops — only while actually moving
+        updatePlayerMovementAudio(isMoving, sprint);
+        
+        if (isMoving && gamePhase === "chase") {
             if (currentTime - lastFootstepTime > footstepInterval) {
-                playFootstepSound();
+                emitPlayerSound(sprint ? "run" : "walk", false);
                 lastFootstepTime = currentTime;
             }
         }
@@ -2056,8 +2243,8 @@ function animate() {
         const acceleration = 10.0;
         const friction = 10.0;
         
-        // Adjust footstep interval based on sprint
-        footstepInterval = sprint ? 250 : 400;
+        // Adjust hearing pulse interval based on sprint
+        footstepInterval = sprint ? 220 : 380;
         
         // Calculate target velocity
         const targetVelocityX = direction.x * speed * delta;
@@ -2093,19 +2280,27 @@ function animate() {
             camera.position.copy(adjustedPosition);
             
             // Update lever activation if needed
-            if (activeLever && leverKeyPressed) {
+            if (activeLever && interactKeyPressed) {
                 updateLeverActivation();
             }
             
-            // Update door escape progress if needed
-            if (activeDoor && leverKeyPressed) {
-                updateDoorEscapeProgress();
+            // Update door drag while holding E
+            if (isDraggingDoor && interactKeyPressed) {
+                updateDoorDragProximity();
             }
             
-            // Check if player is touching an activated door
-            if (doorActivated) {
-                checkDoorEscapeCollision();
+            // Sliding door physics (inertia / friction)
+            updateDoorPhysics(delta);
+            
+            // After the tutorial door is open, start second half when found
+            if (doorsFullyOpen && !secondHalfStarted) {
+                checkTutorialExitForLunasia();
             }
+        }
+        
+        // Lunasia audio + AI
+        if (enemy) {
+            updateLunasiaWalkAudio();
         }
     }
     
@@ -2116,34 +2311,192 @@ function animate() {
     renderer.render(scene, camera);
 }
 
-// Play footstep sound
-function playFootstepSound() {
+function updatePlayerMovementAudio(moving, isSprinting) {
     if (!audioInitialized) return;
     
     try {
-        // Make sure we have a valid audio object with buffer
-        if (footstepSound && footstepSound.buffer) {
-            // First check if the audio is already playing
-            if (footstepSound.isPlaying) {
-                // If already playing, we'll just skip this footstep
-                return;
-            }
-            
-            // Try playing the original footstep sound directly instead of cloning
-            // This is safer for GitHub Pages where audio context might be restricted
-            footstepSound.play();
-            
-            // Set a timeout to artificially end the sound earlier
-            // This allows multiple footsteps without needing to clone
-            setTimeout(() => {
-                if (footstepSound && footstepSound.isPlaying) {
-                    footstepSound.stop();
-                }
-            }, 100); // Short duration to allow for rapid footsteps
+        if (!moving) {
+            if (walkSound && walkSound.isPlaying) walkSound.stop();
+            if (runSound && runSound.isPlaying) runSound.stop();
+            return;
         }
-    } catch (error) {
-        console.warn("Error playing footstep sound:", error);
-        // Fail silently - footsteps are not critical for gameplay
+        
+        if (isSprinting) {
+            if (walkSound && walkSound.isPlaying) walkSound.stop();
+            if (runSound && runSound.buffer && !runSound.isPlaying) runSound.play();
+        } else {
+            if (runSound && runSound.isPlaying) runSound.stop();
+            if (walkSound && walkSound.buffer && !walkSound.isPlaying) walkSound.play();
+        }
+    } catch (e) {
+        console.warn("Movement audio error:", e);
+    }
+}
+
+function tileDistanceXZ(ax, az, bx, bz) {
+    const dx = ax - bx;
+    const dz = az - bz;
+    return Math.sqrt(dx * dx + dz * dz) / gridCellSize;
+}
+
+function worldToGrid(x, z) {
+    if (!navigationGrid.length) return { x: 0, z: 0 };
+    const gw = navigationGrid[0].length;
+    const gh = navigationGrid.length;
+    return {
+        x: Math.round((x + gw * gridCellSize / 2) / gridCellSize),
+        z: Math.round((z + gh * gridCellSize / 2) / gridCellSize)
+    };
+}
+
+function gridToWorld(gx, gz) {
+    if (!navigationGrid.length || !navigationGrid[gz] || !navigationGrid[gz][gx]) {
+        return { x: 0, z: 0 };
+    }
+    return {
+        x: navigationGrid[gz][gx].worldX,
+        z: navigationGrid[gz][gx].worldZ
+    };
+}
+
+function pickRandomWalkableWorldPos(area) {
+    if (!navigationGrid.length) return null;
+    const gh = navigationGrid.length;
+    const gw = navigationGrid[0].length;
+    let minX = 0, maxX = gw - 1, minZ = 0, maxZ = gh - 1;
+    if (area) {
+        minX = Math.max(0, area.minX);
+        maxX = Math.min(gw - 1, area.maxX);
+        minZ = Math.max(0, area.minZ);
+        maxZ = Math.min(gh - 1, area.maxZ);
+    }
+    for (let attempt = 0; attempt < 40; attempt++) {
+        const gx = minX + Math.floor(Math.random() * (maxX - minX + 1));
+        const gz = minZ + Math.floor(Math.random() * (maxZ - minZ + 1));
+        if (navigationGrid[gz] && navigationGrid[gz][gx] && navigationGrid[gz][gx].walkable) {
+            return { x: navigationGrid[gz][gx].worldX, z: navigationGrid[gz][gx].worldZ };
+        }
+    }
+    return null;
+}
+
+function createSearchAreaContainingPlayer(sizeTiles) {
+    const pg = worldToGrid(camera.position.x, camera.position.z);
+    const ox = Math.floor(Math.random() * sizeTiles);
+    const oz = Math.floor(Math.random() * sizeTiles);
+    return {
+        minX: pg.x - ox,
+        maxX: pg.x - ox + sizeTiles - 1,
+        minZ: pg.z - oz,
+        maxZ: pg.z - oz + sizeTiles - 1,
+        size: sizeTiles,
+        lastUpdate: performance.now()
+    };
+}
+
+function playerInSearchArea(area) {
+    if (!area) return false;
+    const pg = worldToGrid(camera.position.x, camera.position.z);
+    return pg.x >= area.minX && pg.x <= area.maxX && pg.z >= area.minZ && pg.z <= area.maxZ;
+}
+
+function lunasiaInSearchArea(area) {
+    if (!area || !enemy) return false;
+    const eg = worldToGrid(enemy.position.x, enemy.position.z);
+    return eg.x >= area.minX && eg.x <= area.maxX && eg.z >= area.minZ && eg.z <= area.maxZ;
+}
+
+// Notify Lunasia of a sound. Global = exact player pos for 1.5s. Local = K/C/V ranges.
+function emitPlayerSound(kind, isGlobal) {
+    if (!enemy || !lunasiaAI || gamePhase !== "chase") return;
+    
+    const now = performance.now();
+    
+    if (isGlobal) {
+        lunasiaAI.exactKnowUntil = now + 1500;
+        lunasiaAI.lastKnownPos = { x: camera.position.x, z: camera.position.z };
+        lunasiaAI.searchArea = null;
+        lunasiaAI.knowledge = "exact";
+        lunasiaAI.behavior = "move";
+        lunasiaAI.noiseLevel = 1.0;
+        currentPath = [];
+        return;
+    }
+    
+    const dist = tileDistanceXZ(
+        enemy.position.x, enemy.position.z,
+        camera.position.x, camera.position.z
+    );
+    
+    let known = 5, clouded = 10, vague = 15;
+    if (kind === "run") {
+        known = 10; clouded = 20; vague = 30;
+    } else if (kind === "lidar") {
+        known = 3; clouded = 7; vague = 11;
+    } else if (kind === "walk") {
+        known = 5; clouded = 10; vague = 15;
+    }
+    
+    if (dist <= known) {
+        lunasiaAI.exactKnowUntil = Math.max(lunasiaAI.exactKnowUntil, now + 200);
+        lunasiaAI.lastKnownPos = { x: camera.position.x, z: camera.position.z };
+        lunasiaAI.searchArea = null;
+        lunasiaAI.knowledge = "exact";
+        lunasiaAI.behavior = "move";
+        lunasiaAI.noiseLevel = 1.0;
+    } else if (dist <= clouded) {
+        const needNew = !lunasiaAI.searchArea ||
+            lunasiaAI.searchArea.size !== 7 ||
+            !playerInSearchArea(lunasiaAI.searchArea) ||
+            (now - lunasiaAI.searchArea.lastUpdate > 2000);
+        if (needNew) {
+            lunasiaAI.searchArea = createSearchAreaContainingPlayer(7);
+            lunasiaAI.searchArea.updateInterval = 2000;
+        }
+        lunasiaAI.knowledge = "clouded";
+        lunasiaAI.behavior = "move";
+        lunasiaAI.noiseLevel = 1.0;
+        lunasiaAI.lastKnownPos = null;
+    } else if (dist <= vague) {
+        const needNew = !lunasiaAI.searchArea ||
+            lunasiaAI.searchArea.size !== 20 ||
+            !playerInSearchArea(lunasiaAI.searchArea) ||
+            (now - lunasiaAI.searchArea.lastUpdate > 5000);
+        if (needNew) {
+            lunasiaAI.searchArea = createSearchAreaContainingPlayer(20);
+            lunasiaAI.searchArea.updateInterval = 5000;
+        }
+        lunasiaAI.knowledge = "vague";
+        lunasiaAI.behavior = "move";
+        lunasiaAI.noiseLevel = 1.0;
+        lunasiaAI.lastKnownPos = null;
+    }
+}
+
+function updateLunasiaWalkAudio() {
+    if (!audioInitialized || !lunasiaWalkSound || !lunasiaWalkSound.buffer || !enemy || !lunasiaAI) return;
+    
+    const dist = tileDistanceXZ(
+        enemy.position.x, enemy.position.z,
+        camera.position.x, camera.position.z
+    );
+    const noise = lunasiaAI.noiseLevel; // 0.5 search, 1.0 move
+    const fullRange = 10 * noise;
+    const zeroRange = 15 * noise;
+    
+    let vol = 0;
+    if (dist <= fullRange) {
+        vol = 0.65;
+    } else if (dist < zeroRange) {
+        vol = 0.65 * (1 - (dist - fullRange) / (zeroRange - fullRange));
+    }
+    
+    lunasiaWalkSound.setVolume(Math.max(0, vol));
+    
+    if (vol > 0.02) {
+        if (!lunasiaWalkSound.isPlaying) lunasiaWalkSound.play();
+    } else if (lunasiaWalkSound.isPlaying) {
+        lunasiaWalkSound.stop();
     }
 }
 
@@ -2153,33 +2506,44 @@ function createEnemy() {
     const height = 1.6;
     const depth = 0.8;
     
-    // Create a simple box geometry for the enemy but make it invisible
     const geometry = new THREE.BoxGeometry(width, height, depth);
     const material = new THREE.MeshBasicMaterial({
-        color: 0x000000,  // Pure black
-        opacity: 0.0,     // Make completely invisible
-        transparent: true // Enable transparency
+        color: 0x000000,
+        opacity: 0.0,
+        transparent: true
     });
     
     enemy = new THREE.Mesh(geometry, material);
+    enemy.position.set(0, height / 2, 0);
     
-    // Position at the center of the map
-    enemy.position.set(0, height/2, 0);
-    
-    // Initialize position tracking
     lastEnemyPosition.copy(enemy.position);
     lastEnemyMoveTime = performance.now();
     
-    // Add to the scene
     scene.add(enemy);
     
-    // Create a bounding box for collision detection
     enemy.userData.boundingBox = new THREE.Box3().setFromObject(enemy);
-    
-    // Set material type for LIDAR detection
     enemy.userData.material = "enemy";
     
-    console.log("Enemy created at position:", enemy.position);
+    lunasiaAI = {
+        behavior: "search", // search | move
+        noiseLevel: 0.5,
+        exactKnowUntil: 0,
+        lastKnownPos: null,
+        searchArea: null,
+        knowledge: null,
+        patrolTarget: null
+    };
+    
+    currentPath = [];
+    // Begin searching immediately — no player knowledge
+    pickNewSearchTarget();
+}
+
+function pickNewSearchTarget(area) {
+    const pos = pickRandomWalkableWorldPos(area || null);
+    if (pos && lunasiaAI) {
+        lunasiaAI.patrolTarget = pos;
+    }
 }
 
 // Find the best waypoint that has line of sight to the player
@@ -2238,268 +2602,140 @@ function findWaypointWithLineOfSightToPlayer() {
 
 // Update enemy position and check for collision with player
 function updateEnemy() {
-    if (!enemy) return;
+    if (!enemy || !lunasiaAI) return;
     
     const currentTime = performance.now();
-    
-    // Check if the enemy has moved - use approximate comparison for better performance
-    const lastPos = lastEnemyPosition;
     const enemyPos = enemy.position;
-    const hasMoved = Math.abs(lastPos.x - enemyPos.x) > 0.001 || Math.abs(lastPos.z - enemyPos.z) > 0.001;
     
-    // If the enemy hasn't moved for stuckCheckInterval ms, teleport to nearest waypoint
+    // Stuck recovery
+    const lastPos = lastEnemyPosition;
+    const hasMoved = Math.abs(lastPos.x - enemyPos.x) > 0.001 || Math.abs(lastPos.z - enemyPos.z) > 0.001;
     if (!hasMoved && currentTime - lastEnemyMoveTime > stuckCheckInterval) {
-        // Only log in development
-        if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-            console.log("Enemy stuck detected! Teleporting to nearest waypoint");
-        }
-        
-        // Find the nearest waypoint to teleport to
         const nearestWaypoint = findNearestWaypoint(enemyPos.x, enemyPos.z);
-        
         if (nearestWaypoint) {
-            // Teleport the enemy to the waypoint
             enemyPos.set(nearestWaypoint.x, enemyPos.y, nearestWaypoint.z);
-            
-            // Update the enemy's bounding box
             enemy.userData.boundingBox.setFromObject(enemy);
-            
-            // Clear the current path to force recalculation
             currentPath = [];
-            enemy.userData.followingWaypointPath = false;
-            
-            // Reset the movement tracking
             lastEnemyPosition.copy(enemyPos);
             lastEnemyMoveTime = currentTime;
-            
-            // Reset path caches if teleporting
-            if (Object.keys(pathfindingCache).length > 100) {
-                pathfindingCache = {};
-            }
-            
-            // Only log in development
-            if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-                console.log("Enemy teleported to waypoint at position:", enemyPos);
-            }
-            return; // Skip the rest of the update for this frame
+            return;
         }
     }
-    
-    // If the enemy has moved, update the tracking variables
     if (hasMoved) {
         lastEnemyPosition.copy(enemyPos);
         lastEnemyMoveTime = currentTime;
     }
     
-    // Check if we have direct line of sight to the player
-    const previousLineOfSight = enemy.userData.hasLineOfSight || false;
-    const hasDirectLineOfSight = checkLineOfSightToPlayer();
-    
-    // Check if line of sight was just lost (transition from having sight to losing it)
-    const justLostLineOfSight = previousLineOfSight && !hasDirectLineOfSight;
-    
-    // Calculate if player has moved significantly - only when needed
-    let playerMovedSignificantly = false;
-    if (currentPath.length > 0 && currentTime - pathUpdateTime > pathUpdateInterval && !enemy.userData.followingWaypointPath) {
-        const lastPathPoint = currentPath[currentPath.length - 1];
-        const playerPos = camera.position;
-        const dx = lastPathPoint.x - playerPos.x;
-        const dz = lastPathPoint.z - playerPos.z;
-        playerMovedSignificantly = (dx * dx + dz * dz) > 25; // 5 squared = 25 (distance threshold of 5)
+    // Exact knowledge window from global / known-range sounds
+    const hasExact = currentTime < lunasiaAI.exactKnowUntil;
+    if (hasExact) {
+        lunasiaAI.lastKnownPos = { x: camera.position.x, z: camera.position.z };
+        lunasiaAI.behavior = 'move';
+        lunasiaAI.noiseLevel = 1.0;
+        lunasiaAI.searchArea = null;
+        lunasiaAI.knowledge = 'exact';
+    } else if (lunasiaAI.knowledge === 'exact' && lunasiaAI.lastKnownPos) {
+        // 1.5s expired — keep last known as investigate target
+        lunasiaAI.knowledge = 'lastKnown';
+        lunasiaAI.behavior = 'move';
+        lunasiaAI.noiseLevel = 1.0;
     }
     
-    // Determine if path should be recalculated
-    const shouldRecalculatePath = 
-        currentPath.length === 0 || 
-        (currentTime - pathUpdateTime > pathUpdateInterval && (!enemy.userData.followingWaypointPath || playerMovedSignificantly)) ||
-        (hasDirectLineOfSight && !previousLineOfSight) ||
-        justLostLineOfSight;
-    
-    // Update line of sight status
-    enemy.userData.hasLineOfSight = hasDirectLineOfSight;
-    
-    // Handle path recalculation if needed
-    if (shouldRecalculatePath) {
-        const playerPos = camera.position;
-        
-        // If we just lost line of sight, always recalculate using waypoints
-        if (justLostLineOfSight || (!hasDirectLineOfSight && currentPath.length === 0)) {
-            // Force immediate path recalculation when line of sight is lost
-            pathUpdateTime = currentTime - pathUpdateInterval;
-            
-            // Find the best waypoint that has line of sight to the player
-            const targetWaypoint = findWaypointWithLineOfSightToPlayer();
-            
-            if (targetWaypoint) {
-                // Calculate path from enemy to the target waypoint
-                const pathToWaypoint = findPath(
-                    enemyPos.x, enemyPos.z,
-                    targetWaypoint.x, targetWaypoint.z
-                );
-                
-                // If we found a path to the waypoint, add a direct line from waypoint to player
-                if (pathToWaypoint.length > 0) {
-                    // Remove the last point if it's the waypoint itself
-                    if (pathToWaypoint.length > 1) {
-                        pathToWaypoint.pop();
-                    }
-                    
-                    // Add the waypoint and player position to complete the path
-                    pathToWaypoint.push({ x: targetWaypoint.x, z: targetWaypoint.z });
-                    pathToWaypoint.push({ x: playerPos.x, z: playerPos.z });
-                    
-                    // Use this combined path
-                    currentPath = pathToWaypoint;
-                    enemy.userData.followingWaypointPath = true;
-                } else {
-                    // Fallback to direct path if can't path to waypoint
-                    currentPath = [{ x: playerPos.x, z: playerPos.z }];
-                    enemy.userData.followingWaypointPath = false;
-                }
-            } else {
-                // Calculate conventional path if no waypoint with line of sight
-                currentPath = findPath(
-                    enemyPos.x, enemyPos.z,
-                    playerPos.x, playerPos.z
-                );
-                enemy.userData.followingWaypointPath = currentPath.length > 2;
-            }
-            
-            pathUpdateTime = currentTime;
-        }
-        // Use direct path if we have line of sight
-        else if (hasDirectLineOfSight) {
-            currentPath = [{ x: playerPos.x, z: playerPos.z }];
-            enemy.userData.followingWaypointPath = false;
-            
-            pathUpdateTime = currentTime;
-        }
-        // Regular path update
-        else if (currentTime - pathUpdateTime > pathUpdateInterval) {
-            // Try to minimize changes to existing path
-            if (currentPath.length > 0) {
-                // Check if we can just update the final destination
-                const pathEndpoint = currentPath[currentPath.length - 1];
-                const dx = pathEndpoint.x - playerPos.x;
-                const dz = pathEndpoint.z - playerPos.z;
-                const distanceFromLastWaypointToPlayer = Math.sqrt(dx * dx + dz * dz);
-                
-                if (distanceFromLastWaypointToPlayer < 5) {
-                    // Just update the final destination
-                    currentPath[currentPath.length - 1] = { x: playerPos.x, z: playerPos.z };
-                    pathUpdateTime = currentTime;
-                } else {
-                    // Recalculate path through waypoint
-                    const targetWaypoint = findWaypointWithLineOfSightToPlayer();
-                    
-                    if (targetWaypoint) {
-                        // Create path through waypoint
-                        const pathToWaypoint = findPath(
-                            enemyPos.x, enemyPos.z,
-                            targetWaypoint.x, targetWaypoint.z
-                        );
-                        
-                        if (pathToWaypoint.length > 0) {
-                            // Remove last point if needed
-                            if (pathToWaypoint.length > 1) {
-                                pathToWaypoint.pop();
-                            }
-                            
-                            // Add waypoint and player position
-                            pathToWaypoint.push({ x: targetWaypoint.x, z: targetWaypoint.z });
-                            pathToWaypoint.push({ x: playerPos.x, z: playerPos.z });
-                            
-                            currentPath = pathToWaypoint;
-                            enemy.userData.followingWaypointPath = true;
-                        } else {
-                            // Fallback to direct path
-                            currentPath = findPath(
-                                enemyPos.x, enemyPos.z,
-                                playerPos.x, playerPos.z
-                            );
-                            enemy.userData.followingWaypointPath = currentPath.length > 2;
-                        }
-                    } else {
-                        // Fallback to standard path
-                        currentPath = findPath(
-                            enemyPos.x, enemyPos.z,
-                            playerPos.x, playerPos.z
-                        );
-                        enemy.userData.followingWaypointPath = currentPath.length > 2;
-                    }
-                    
-                    pathUpdateTime = currentTime;
-                }
+    // Refresh clouded/vague areas on interval or if player left
+    if (lunasiaAI.searchArea && !hasExact) {
+        const area = lunasiaAI.searchArea;
+        const interval = area.updateInterval || (area.size === 7 ? 2000 : 5000);
+        if (!playerInSearchArea(area) || (currentTime - area.lastUpdate > interval)) {
+            // Only refresh if we still have that tier of info — otherwise fall to search
+            if (lunasiaAI.knowledge === 'clouded' || lunasiaAI.knowledge === 'vague') {
+                lunasiaAI.searchArea = createSearchAreaContainingPlayer(area.size);
+                lunasiaAI.searchArea.updateInterval = interval;
             }
         }
     }
     
-    // Move along the current path if one exists
+    // Decide chase target
+    let target = null;
+    if (hasExact || lunasiaAI.knowledge === 'exact') {
+        target = { x: camera.position.x, z: camera.position.z };
+        lunasiaAI.behavior = 'move';
+        lunasiaAI.noiseLevel = 1.0;
+    } else if (lunasiaAI.lastKnownPos && lunasiaAI.knowledge === 'lastKnown') {
+        target = lunasiaAI.lastKnownPos;
+        lunasiaAI.behavior = 'move';
+        lunasiaAI.noiseLevel = 1.0;
+        const d = distance(enemyPos.x, enemyPos.z, target.x, target.z);
+        if (d < 1.0) {
+            // Reached last known — resume random search
+            lunasiaAI.lastKnownPos = null;
+            lunasiaAI.knowledge = null;
+            lunasiaAI.behavior = 'search';
+            lunasiaAI.noiseLevel = 0.5;
+            pickNewSearchTarget();
+            target = lunasiaAI.patrolTarget;
+        }
+    } else if (lunasiaAI.searchArea) {
+        lunasiaAI.behavior = 'move';
+        lunasiaAI.noiseLevel = 1.0;
+        if (!lunasiaInSearchArea(lunasiaAI.searchArea)) {
+            // Path into the area (center-ish)
+            const cx = (lunasiaAI.searchArea.minX + lunasiaAI.searchArea.maxX) / 2;
+            const cz = (lunasiaAI.searchArea.minZ + lunasiaAI.searchArea.maxZ) / 2;
+            const w = gridToWorld(Math.round(cx), Math.round(cz));
+            target = w;
+        } else {
+            // Inside area — search within it
+            lunasiaAI.behavior = 'search';
+            lunasiaAI.noiseLevel = 0.5;
+            if (!lunasiaAI.patrolTarget) pickNewSearchTarget(lunasiaAI.searchArea);
+            target = lunasiaAI.patrolTarget;
+        }
+    } else {
+        // Pure search — no intel
+        lunasiaAI.behavior = 'search';
+        lunasiaAI.noiseLevel = 0.5;
+        if (!lunasiaAI.patrolTarget) pickNewSearchTarget();
+        target = lunasiaAI.patrolTarget;
+    }
+    
+    // Recalculate path periodically or when empty
+    if (target && (currentPath.length === 0 || currentTime - pathUpdateTime > pathUpdateInterval)) {
+        currentPath = findPath(enemyPos.x, enemyPos.z, target.x, target.z);
+        if (currentPath.length === 0) {
+            currentPath = [{ x: target.x, z: target.z }];
+        }
+        pathUpdateTime = currentTime;
+    }
+    
+    // Follow path
     if (currentPath.length > 0) {
-        // Get the next target waypoint
-        const targetWaypoint = currentPath[0];
+        const wp = currentPath[0];
+        const dx = wp.x - enemyPos.x;
+        const dz = wp.z - enemyPos.z;
+        const distWp = Math.sqrt(dx * dx + dz * dz);
         
-        // Calculate direction to next waypoint
-        const dx = targetWaypoint.x - enemyPos.x;
-        const dz = targetWaypoint.z - enemyPos.z;
-        const distanceToWaypoint = Math.sqrt(dx * dx + dz * dz);
-        
-        // If we've reached the waypoint, move to the next one
-        if (distanceToWaypoint < 0.2) {
-            // Remove the current waypoint
+        if (distWp < 0.35) {
             currentPath.shift();
-            
-            // If we've reached the end of the path
-            if (currentPath.length === 0) {
-                // If we can see the player, create a direct path
-                if (hasDirectLineOfSight) {
-                    currentPath = [{ x: camera.position.x, z: camera.position.z }];
-                    enemy.userData.followingWaypointPath = false;
-                } else {
-                    // Force path recalculation on next frame
-                    enemy.userData.followingWaypointPath = false;
-                }
+            if (currentPath.length === 0 && lunasiaAI.behavior === 'search') {
+                pickNewSearchTarget(lunasiaAI.searchArea);
+                currentPath = [];
+                pathUpdateTime = 0;
             }
         } else {
-            // Calculate normalized direction
-            const invDist = 1 / distanceToWaypoint;
-            const dirX = dx * invDist;
-            const dirZ = dz * invDist;
-            
-            // Calculate speed - faster when in line of sight
-            const speed = hasDirectLineOfSight ? 0.0325 : 0.025; // Increased by 25% from 0.026/0.02
-            
-            // Store current position before movement
-            const previousPosition = _tempVector3 || new THREE.Vector3(); // Reuse vector if available
-            _tempVector3 = previousPosition;
-            previousPosition.copy(enemyPos);
-            
-            // Update enemy position
-            enemyPos.x += dirX * speed;
-            enemyPos.z += dirZ * speed;
-            
-            // Check for wall collisions
-            const adjustedPosition = checkWallCollisions(
-                enemyPos.clone(),
-                previousPosition,
-                0.4 // Enemy collision radius
-            );
-            
-            // Apply adjusted position
-            enemyPos.copy(adjustedPosition);
+            const inv = 1 / distWp;
+            const speed = lunasiaAI.behavior === 'move' ? 0.0325 : 0.024;
+            const previousPosition = (_tempVector3 || (_tempVector3 = new THREE.Vector3())).copy(enemyPos);
+            enemyPos.x += dx * inv * speed;
+            enemyPos.z += dz * inv * speed;
+            const adjusted = checkWallCollisions(enemyPos.clone(), previousPosition, 0.4);
+            enemyPos.copy(adjusted);
         }
     }
     
-    // Update enemy bounding box and check for collision with player
     enemy.userData.boundingBox.setFromObject(enemy);
     
-    // Use the same temp vector for player position to avoid creating new objects
-    const playerPos = _tempVector3_2 || new THREE.Vector3();
-    _tempVector3_2 = playerPos;
-    playerPos.copy(camera.position);
-    
-    const playerBoundingSphere = _tempSphere || new THREE.Sphere();
-    _tempSphere = playerBoundingSphere;
+    const playerPos = (_tempVector3_2 || (_tempVector3_2 = new THREE.Vector3())).copy(camera.position);
+    const playerBoundingSphere = (_tempSphere || (_tempSphere = new THREE.Sphere()));
     playerBoundingSphere.center.copy(playerPos);
     playerBoundingSphere.radius = collisionDistance;
     
@@ -2562,8 +2798,9 @@ function gameOver() {
     if (audioInitialized) {
         if (electricalHumSound && electricalHumSound.isPlaying) electricalHumSound.stop();
         if (lunasiaSound && lunasiaSound.isPlaying) lunasiaSound.stop();
-        if (footstepSound && footstepSound.isPlaying) footstepSound.stop();
-        if (waterDripSound && waterDripSound.isPlaying) waterDripSound.stop();
+        if (walkSound && walkSound.isPlaying) walkSound.stop();
+        if (runSound && runSound.isPlaying) runSound.stop();
+        if (lunasiaWalkSound && lunasiaWalkSound.isPlaying) lunasiaWalkSound.stop();
     }
     
     showGameOverScreen();
@@ -2770,36 +3007,25 @@ function getNeighbors(node) {
 
 // Add lever and door interaction functions after animate() function
 
-// Check if player is near an inactive lever
+// Check if player is near an inactive lever — E activates immediately
 function checkLeverInteraction() {
-    if (activeLever || !leverKeyPressed) return;
+    if (activeLever || !interactKeyPressed) return;
     
     const playerPos = camera.position.clone();
-    playerPos.y = 0.1; // Use a consistent Y position for interaction
+    playerPos.y = 0.1;
     
-    // Check each lever
     for (const lever of levers) {
-        // Skip already activated levers
         if (lever.userData.active) continue;
         
-        // Check if player is within interaction radius of this lever
         const leverPos = lever.position.clone();
         const dist = playerPos.distanceTo(leverPos);
         
-        // Debug - log distance to nearest lever
-        console.log("Distance to lever:", dist);
-        
-        if (dist <= 1.0) { // Increased interaction radius
-            // Start lever activation
+        if (dist <= 1.2) {
             activeLever = lever;
-            leverActivationStartTime = performance.now();
-            leverActivationProgress = 0;
-            
-            // Show subtitle for feedback
-            showSubtitle("Hold F to activate lever...", requiredLeverHoldTime + 500);
-            
-            // Create progress bar
-            createLeverProgressBar();
+            if (lever.userData.handle) {
+                lever.userData.handle.rotation.x = -Math.PI / 4;
+            }
+            activateLever();
             break;
         }
     }
@@ -2832,45 +3058,9 @@ function createLeverProgressBar() {
     }
 }
 
-// Update lever activation progress
+// Update lever activation progress (instant E path — no hold bar)
 function updateLeverActivation() {
-    if (!activeLever || !leverKeyPressed) return;
-    
-    const playerPos = camera.position.clone();
-    playerPos.y = 0.1;
-    
-    // Make sure player is still close enough to the lever
-    const dist = playerPos.distanceTo(activeLever.position);
-    if (dist > 1.0) { // Use the same increased interaction radius
-        resetLeverActivation();
-        return;
-    }
-    
-    // Calculate progress
-    const currentTime = performance.now();
-    const elapsedTime = currentTime - leverActivationStartTime;
-    leverActivationProgress = Math.min(100, (elapsedTime / requiredLeverHoldTime) * 100);
-    
-    // Update progress bar
-    const progressFill = document.getElementById('lever-progress-fill');
-    if (progressFill) {
-        progressFill.style.width = leverActivationProgress + '%';
-    }
-    
-    // Animate lever handle
-    if (activeLever.userData.handle) {
-        // Rotate from 45 degrees to -45 degrees based on progress
-        const rotationProgress = leverActivationProgress / 100;
-        const startAngle = Math.PI / 4; // 45 degrees
-        const endAngle = -Math.PI / 4; // -45 degrees
-        const currentAngle = startAngle + (endAngle - startAngle) * rotationProgress;
-        activeLever.userData.handle.rotation.x = currentAngle;
-    }
-    
-    // Check if lever is fully activated
-    if (leverActivationProgress >= 100) {
-        activateLever();
-    }
+    if (!activeLever || !interactKeyPressed) return;
 }
 
 // Reset lever activation
@@ -2902,6 +3092,17 @@ function activateLever() {
     
     activeLever.userData.active = true;
     
+    // Play button click for orange panel interaction
+    if (audioInitialized && buttonClickSound && buttonClickSound.buffer) {
+        if (buttonClickSound.isPlaying) {
+            buttonClickSound.stop();
+        }
+        buttonClickSound.play();
+    }
+    
+    // Global sound — Lunasia instantly knows player location (chase phase)
+    emitPlayerSound("lever", true);
+    
     // Remove progress bar
     const progressBar = document.getElementById('lever-progress');
     if (progressBar) {
@@ -2917,7 +3118,7 @@ function activateLever() {
     activeLever = null;
 }
 
-// Check if all levers are activated and activate doors if so
+// Check if all levers are activated and unlock doors if so
 function checkAllLeversActivated() {
     const allActivated = levers.every(lever => lever.userData.active);
     
@@ -2925,117 +3126,203 @@ function checkAllLeversActivated() {
         doorActivated = true;
         activateAllDoors();
         
-        // Show message that doors are activated
         setTimeout(() => {
-            showSubtitle("All doors activated!", 3000);
-        }, 2000);
+            showSubtitle("Door unlocked. Hold E and drag with the mouse to open it.", 5000);
+            showHelpText("Green objects can be grabbed and dragged with E. Hold E near the door and move the mouse to open it.");
+        }, 1500);
     }
 }
 
-// Activate all doors
+// Unlock all doors (green / draggable)
 function activateAllDoors() {
-    console.log("Activating all doors");
-    
     for (const door of doors) {
         door.userData.active = true;
-        
-        // Change door appearance to indicate activation
-        door.material.color.set(0x00AA00); // Green tint
-        
-        // Update door bounding box to reflect new interactive state
+        door.material.color.set(0x00ff00);
+        door.material.opacity = 0.0;
+        door.material.transparent = true;
         door.userData.boundingBox.setFromObject(door);
     }
-    
-    console.log("Total doors activated:", doors.length);
 }
 
-// Check if player is touching an activated door to trigger escape ending
-function checkDoorEscapeCollision() {
-    // If already activating a door, skip the check
-    if (activeDoor) return;
+// Begin dragging an unlocked door while holding E nearby
+function tryStartDoorDrag() {
+    if (!doorActivated || doorsFullyOpen || isDraggingDoor) return;
     
-    // Only check for door interaction if F key is pressed
-    if (!leverKeyPressed) return;
-    
-    // Create a bounding sphere for the player with larger radius for easier interaction
     const playerPos = camera.position.clone();
-    const interactionRadius = 1.5; // Increased from collisionDistance
-    const playerBoundingSphere = new THREE.Sphere(playerPos, interactionRadius);
+    const playerBoundingSphere = new THREE.Sphere(playerPos, 2.0);
     
-    // Debug log to help troubleshoot
-    console.log("Checking for door interaction, F key pressed:", leverKeyPressed);
-    
-    // Check each door
     for (const door of doors) {
-        // Only check activated doors
-        if (!door.userData.active) {
-            console.log("Skipping inactive door");
-            continue;
-        }
-        
-        console.log("Checking distance to activated door");
-        
-        // Check if player is close to this door
+        if (!door.userData.active) continue;
         if (door.userData.boundingBox.intersectsSphere(playerBoundingSphere)) {
-            console.log("Player is near door and pressing F - starting escape sequence");
-            
-            // Start door escape sequence
-            startDoorEscapeSequence(door);
+            isDraggingDoor = true;
+            activeDoor = door;
+            window.blockPointerLook = true;
+            showSubtitle("Drag the mouse to slide the door...", 2500);
             return;
-        } else {
-            // Calculate distance for debugging
-            const doorCenter = new THREE.Vector3();
-            door.userData.boundingBox.getCenter(doorCenter);
-            const distance = playerPos.distanceTo(doorCenter);
-            console.log("Door detected but too far:", distance, "meters");
         }
     }
+}
+
+function stopDoorDrag() {
+    isDraggingDoor = false;
+    activeDoor = null;
+    window.blockPointerLook = false;
+}
+
+function onDoorDragMouseMove(event) {
+    if (!isDraggingDoor || !interactKeyPressed || doorsFullyOpen) return;
     
-    if (doors.length === 0) {
-        console.log("No doors found in the level");
-    } else if (doors.filter(d => d.userData.active).length === 0) {
-        console.log("No activated doors found");
+    // Impart sliding velocity (physics object feel)
+    const impulse = (event.movementX || 0) * 0.045;
+    doorSlideVelocity += impulse;
+    doorSlideVelocity = Math.max(-0.35, Math.min(0.35, doorSlideVelocity));
+    doorDragOpen += (event.movementX || 0) * 0.012;
+    doorDragOpen = Math.max(0, Math.min(doorSlideMax, doorDragOpen));
+    applyDoorSlideVisuals();
+    
+    if (doorDragOpen >= doorSlideMax * 0.85) {
+        finishOpeningDoors();
     }
 }
 
-// Start the door escape sequence
-function startDoorEscapeSequence(door) {
-    activeDoor = door;
-    doorEscapeStartTime = performance.now();
-    doorEscapeProgress = 0;
+function updateDoorPhysics(delta) {
+    if (doorsFullyOpen || !doorActivated) return;
     
-    // Show subtitle for feedback
-    showSubtitle("Hold F to escape through the door...", requiredDoorHoldTime + 500);
+    // Coast with friction when not held / always integrate velocity
+    if (!isDraggingDoor && Math.abs(doorSlideVelocity) > 0.0005) {
+        doorDragOpen += doorSlideVelocity * (delta * 60);
+        doorSlideVelocity *= Math.pow(0.08, delta); // strong friction
+        if (Math.abs(doorSlideVelocity) < 0.001) doorSlideVelocity = 0;
+    } else if (isDraggingDoor) {
+        doorDragOpen += doorSlideVelocity * (delta * 60) * 0.35;
+        doorSlideVelocity *= Math.pow(0.4, delta);
+    }
     
-    // Create progress bar
-    createDoorEscapeProgressBar();
+    doorDragOpen = Math.max(0, Math.min(doorSlideMax, doorDragOpen));
+    applyDoorSlideVisuals();
+    
+    if (doorDragOpen >= doorSlideMax * 0.85) {
+        finishOpeningDoors();
+    }
 }
 
-// Create a progress bar for door escape
-function createDoorEscapeProgressBar() {
-    // Remove existing progress bar if present
-    let progressBar = document.getElementById('door-escape-progress');
-    if (!progressBar) {
-        progressBar = document.createElement('div');
-        progressBar.id = 'door-escape-progress';
-        progressBar.style.position = 'absolute';
-        progressBar.style.bottom = '10%';
-        progressBar.style.left = '50%';
-        progressBar.style.transform = 'translateX(-50%)';
-        progressBar.style.width = '300px'; // Wider than lever progress bar
-        progressBar.style.height = '20px';
-        progressBar.style.backgroundColor = '#333';
-        progressBar.style.border = '2px solid #FFF';
-        
-        const progressFill = document.createElement('div');
-        progressFill.id = 'door-escape-progress-fill';
-        progressFill.style.width = '0%';
-        progressFill.style.height = '100%';
-        progressFill.style.backgroundColor = '#00AA00'; // Green for door escape
-        
-        progressBar.appendChild(progressFill);
-        document.body.appendChild(progressBar);
+function applyDoorSlideVisuals() {
+    if (doors.length === 0) return;
+    
+    // Slide the door panel(s) sideways along +X like a physical sliding door
+    for (const door of doors) {
+        const closed = door.userData.closedPosition;
+        door.position.x = closed.x + doorDragOpen;
+        door.position.z = closed.z;
+        door.rotation.y = 0;
+        door.userData.boundingBox.setFromObject(door);
     }
+}
+
+function applyDoorDragVisuals() {
+    applyDoorSlideVisuals();
+}
+
+function finishOpeningDoors() {
+    doorsFullyOpen = true;
+    doorDragOpen = doorSlideMax;
+    doorSlideVelocity = 0;
+    stopDoorDrag();
+    applyDoorSlideVisuals();
+    walls = walls.filter(w => doors.indexOf(w) === -1);
+    showSubtitle("Door open. Step through when you're ready.", 4000);
+    showHelpText("Walk up to the open doorway.");
+}
+
+function updateDoorDragProximity() {
+    if (!isDraggingDoor || !activeDoor) return;
+    
+    const playerPos = camera.position.clone();
+    const playerBoundingSphere = new THREE.Sphere(playerPos, 2.5);
+    
+    let stillNear = false;
+    for (const door of doors) {
+        door.userData.boundingBox.setFromObject(door);
+        if (door.userData.boundingBox.intersectsSphere(playerBoundingSphere)) {
+            stillNear = true;
+            break;
+        }
+    }
+    if (!stillNear) {
+        stopDoorDrag();
+    }
+}
+
+function checkTutorialExitForLunasia() {
+    if (secondHalfStarted || doors.length === 0) return;
+    
+    let avgX = 0;
+    let avgZ = 0;
+    for (const door of doors) {
+        avgX += door.userData.closedPosition.x;
+        avgZ += door.userData.closedPosition.z;
+    }
+    avgX /= doors.length;
+    avgZ /= doors.length;
+    
+    const dx = camera.position.x - avgX;
+    const dz = camera.position.z - avgZ;
+    const nearDoorway = (dx * dx + dz * dz) < (3.2 * 3.2);
+    
+    if (nearDoorway) {
+        beginSecondHalf();
+    }
+}
+
+function beginSecondHalf() {
+    if (secondHalfStarted) return;
+    secondHalfStarted = true;
+    gamePhase = "chase";
+    
+    // Reset player to spawn and wipe lidar points
+    camera.position.copy(playerSpawnPosition);
+    camera.position.y = 1.7;
+    velocity.set(0, 0, 0);
+    clearAllDots();
+    
+    // Chase-phase lidar decay
+    dotsDecayEnabled = true;
+    dotLifetime = 15;
+    
+    showSubtitle("This time, I'll be searching for you to try and catch you~", 7000);
+    showHelpText("Shift is the sprint key. Be careful, it makes a lot of noise.");
+    
+    setTimeout(() => {
+        if (gamePhase === "chase" && gameState === "PLAYING") {
+            showHelpText("Your LIDAR Scanner also makes noise.");
+        }
+    }, 4500);
+    
+    // Spawn Lunasia in search mode (no player intel)
+    if (!lunasiaSpawned) {
+        lunasiaSpawned = true;
+        createEnemy();
+        if (enemy) {
+            // Start far from spawn / doorway
+            enemy.position.set(0, 0.8, -2);
+            enemy.userData.boundingBox.setFromObject(enemy);
+            lastEnemyPosition.copy(enemy.position);
+            pickNewSearchTarget();
+        }
+    }
+}
+
+function spawnLunasiaInNextRoom(doorX, doorZ) {
+    beginSecondHalf();
+}
+
+// Legacy hold-F escape replaced by door drag
+function checkDoorEscapeCollision() {}
+function startDoorEscapeSequence(door) {}
+function createDoorEscapeProgressBar() {}
+function updateDoorEscapeProgress() {}
+function resetDoorEscapeProgress() {
+    stopDoorDrag();
 }
 
 // Game escape ending
@@ -3048,8 +3335,9 @@ function gameEscape() {
     if (audioInitialized) {
         if (electricalHumSound && electricalHumSound.isPlaying) electricalHumSound.stop();
         if (lunasiaSound && lunasiaSound.isPlaying) lunasiaSound.stop();
-        if (footstepSound && footstepSound.isPlaying) footstepSound.stop();
-        if (waterDripSound && waterDripSound.isPlaying) waterDripSound.stop();
+        if (walkSound && walkSound.isPlaying) walkSound.stop();
+        if (runSound && runSound.isPlaying) runSound.stop();
+        if (lunasiaWalkSound && lunasiaWalkSound.isPlaying) lunasiaWalkSound.stop();
     }
     
     // Show escape screen instead of game over screen
@@ -3097,62 +3385,6 @@ function showEscapeScreen() {
     escapeScreen.appendChild(escapeText);
     escapeScreen.appendChild(restartButton);
     document.body.appendChild(escapeScreen);
-}
-
-// Update door escape progress
-function updateDoorEscapeProgress() {
-    if (!activeDoor || !leverKeyPressed) return;
-    
-    const playerPos = camera.position.clone();
-    const interactionRadius = 1.5; // Use same larger radius as in checkDoorEscapeCollision
-    
-    // Create a bounding sphere for the player
-    const playerBoundingSphere = new THREE.Sphere(playerPos, interactionRadius);
-    
-    // Make sure player is still close enough to the door
-    if (!activeDoor.userData.boundingBox.intersectsSphere(playerBoundingSphere)) {
-        console.log("Player moved away from door - resetting escape sequence");
-        resetDoorEscapeProgress();
-        return;
-    }
-    
-    // Calculate progress
-    const currentTime = performance.now();
-    const elapsedTime = currentTime - doorEscapeStartTime;
-    doorEscapeProgress = Math.min(100, (elapsedTime / requiredDoorHoldTime) * 100);
-    
-    // Update progress bar
-    const progressFill = document.getElementById('door-escape-progress-fill');
-    if (progressFill) {
-        progressFill.style.width = doorEscapeProgress + '%';
-    }
-    
-    console.log("Door escape progress:", Math.round(doorEscapeProgress) + "%");
-    
-    // Check if escape is complete
-    if (doorEscapeProgress >= 100) {
-        console.log("Door escape complete!");
-        // Player has escaped - end the game with a special message
-        gameEscape();
-    }
-}
-
-// Reset door escape progress
-function resetDoorEscapeProgress() {
-    activeDoor = null;
-    doorEscapeProgress = 0;
-    
-    // Remove progress bar
-    const progressBar = document.getElementById('door-escape-progress');
-    if (progressBar) {
-        document.body.removeChild(progressBar);
-    }
-    
-    // Clear subtitle if it was for door escape
-    const subtitle = document.getElementById('subtitle');
-    if (subtitle && subtitle.textContent.includes("door")) {
-        document.body.removeChild(subtitle);
-    }
 }
 
 // Start the application
